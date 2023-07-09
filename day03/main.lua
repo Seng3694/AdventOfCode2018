@@ -31,7 +31,7 @@ local function hash_point(point)
     return (point.x * 31843249) ~ (point.y * 40519093)
 end
 
-local function solve_part1(claims)
+local function solve_both(claims)
     local intersections = {}
     for i = 1, #claims - 1 do
         for j = i + 1, #claims do
@@ -39,6 +39,8 @@ local function solve_part1(claims)
                 claims[i],
                 claims[j])
             if intersection then
+                claims[i].intersects = true
+                claims[j].intersects = true
                 table.insert(
                     intersections,
                     intersection)
@@ -62,7 +64,12 @@ local function solve_part1(claims)
 
     local entries = 0
     for _ in pairs(points) do entries = entries + 1 end
-    return entries
+
+    for i, v in ipairs(claims) do
+        if v.intersects == nil then
+            return entries, i
+        end
+    end
 end
 
 local function main()
@@ -75,9 +82,10 @@ local function main()
     end
     file:close()
 
-    local part1 = solve_part1(claims)
+    local part1, part2 = solve_both(claims)
 
     print(part1)
+    print(part2)
 end
 
 main()
