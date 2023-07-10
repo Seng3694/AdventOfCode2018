@@ -62,9 +62,22 @@ local function parse_guard_schedules(data)
     return guards
 end
 
-local function solve_part1(data)
-    local guardSchedules = parse_guard_schedules(data)
+local function count_minutes(allRanges)
+    local minutes = {}
+    for i = 1, 60 do
+        table.insert(minutes, { minute = i - 1, count = 0 })
+    end
+    for _, ranges in ipairs(allRanges) do
+        for _, range in ipairs(ranges) do
+            for i = range.from, range.to - 1 do
+                minutes[i + 1].count = minutes[i + 1].count + 1
+            end
+        end
+    end
+    return minutes
+end
 
+local function solve_part1(guardSchedules)
     --find guard with longest time asleep
     local totalSleepTimes = {}
     for guardId, guard in pairs(guardSchedules) do
@@ -83,22 +96,24 @@ local function solve_part1(data)
 
     local first = totalSleepTimes[1]
 
-    local minutes = {}
-    for i = 1, 60 do
-        table.insert(minutes, { minute = i - 1, count = 0 })
-    end
-
-    for _, ranges in ipairs(guardSchedules[first.id].asleepRanges) do
-        for _, range in ipairs(ranges) do
-            for i = range.from, range.to - 1 do
-                minutes[i + 1].count = minutes[i + 1].count + 1
-            end
-        end
-    end
-
+    local minutes = count_minutes(guardSchedules[first.id].asleepRanges)
     table.sort(minutes, function(a, b) return a.count > b.count end)
 
     return first.id * minutes[1].minute
+end
+
+local function solve_part2(guardSchedules)
+    local guardAsleepMinutes = {}
+    for guardId, guard in pairs(guardSchedules) do
+        local minutes = count_minutes(guard.asleepRanges)
+        table.sort(minutes, function(a, b) return a.count > b.count end)
+        table.insert(guardAsleepMinutes, {
+            id = guardId,
+            minutes = minutes,
+        })
+    end
+    table.sort(guardAsleepMinutes, function(a, b) return a.minutes[1].count > b.minutes[1].count end)
+    return guardAsleepMinutes[1].minutes[1].minute * guardAsleepMinutes[1].id
 end
 
 local function main()
@@ -111,9 +126,13 @@ local function main()
     end
     file:close()
 
-    local part1 = solve_part1(data)
+    local guardSchedules = parse_guard_schedules(data)
+
+    local part1 = solve_part1(guardSchedules)
+    local part2 = solve_part2(guardSchedules)
 
     print(part1)
+    print(part2)
 end
 
 main()
