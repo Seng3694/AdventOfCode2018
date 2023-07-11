@@ -18,16 +18,13 @@ local function solve_part1(text, patterns)
 end
 
 local function solve_part2(text, patterns)
-    local results = {}
+    local minLength = math.maxinteger
     for i = 65, 90 do -- A - Z
         local clone = string.gsub(text, "[" .. string.char(i) .. string.char(i + 32) .. "]", "")
-        table.insert(results, {
-            char = i,
-            length = solve_part1(clone, patterns)
-        })
+        local length = solve_part1(clone, patterns)
+        if length < minLength then minLength = length end
     end
-    table.sort(results, function(a, b) return a.length < b.length end)
-    return results[1].length
+    return minLength
 end
 
 local function main()
