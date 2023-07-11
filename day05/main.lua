@@ -1,80 +1,49 @@
-local function parse(path)
-    local file = io.open(path, "r")
-    if not file then return end
-
-    local root = nil
-    local current = root
-    local length = 0
-    repeat
-        local c = file:read(1)
-        if c and c ~= '\n' then
-            local node = { value = string.byte(c) }
-            if current == nil then
-                root = node
-                current = node
-            else
-                node.left = current
-                current.right = node
-                current = node
-            end
-            length = length + 1
-        end
-    until not c
-
-    file:close()
-    return root, length
+local function init_patterns(patterns)
+    for i = 65, 90 do -- A - Z
+        table.insert(patterns, string.char(i) .. string.char(i + 32))
+        table.insert(patterns, string.char(i + 32) .. string.char(i))
+    end
 end
 
-local function are_compatible(a, b)
-    return math.abs(a - b) == 32
-end
-
-local function solve_part1(root, length)
-    local changed = false
-    local current = root
-    local next = current.right
+local function solve_part1(text, patterns)
+    local length = #text
     repeat
-        changed = false
-        while current.right ~= nil do
-            next = current.right
-            if are_compatible(current.value, next.value) then
-                local leftOfCurrent = current.left
-                local rightOfNext = next.right
-                if leftOfCurrent == nil then
-                    root = rightOfNext
-                    rightOfNext.left = nil
-                elseif rightOfNext == nil then
-                    leftOfCurrent.right = nil
-                else
-                    leftOfCurrent.right = rightOfNext
-                    rightOfNext.left = leftOfCurrent
-                end
-                current.left = nil
-                current.right = nil
-                next.left = nil
-                next.right = nil
-                changed = true
-                length = length - 2
-            end
-            current = next
+        length = #text
+        for _, pattern in ipairs(patterns) do
+            text = string.gsub(text, pattern, "")
         end
-        current = root
-    until not changed
+    until #text == length
 
     return length
 end
 
-local function solve_part2(list, length)
+local function solve_part2(text, patterns)
+    local results = {}
     for i = 65, 90 do -- A - Z
-
+        local clone = string.gsub(text, "[" .. string.char(i) .. string.char(i + 32) .. "]", "")
+        table.insert(results, {
+            char = i,
+            length = solve_part1(clone, patterns)
+        })
     end
+    table.sort(results, function(a, b) return a.length < b.length end)
+    return results[1].length
 end
 
 local function main()
-    local list, length = parse("day05/input.txt")
-    local part1 = solve_part1(list, length)
+    local file = io.open("day05/input.txt", "r")
+    if not file then return end
+    local text = file:read("a")
+    text = string.sub(text, 1, #text - 1)
+
+    local patterns = {}
+    init_patterns(patterns)
+
+    local part1 = solve_part1(text, patterns)
+    local part2 = solve_part2(text, patterns)
 
     print(part1)
+    print(part2)
 end
 
 main()
