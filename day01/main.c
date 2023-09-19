@@ -1,32 +1,9 @@
-#include <stddef.h>
-
-static void *aoc_malloc(size_t size);
-static void *aoc_realloc(void *old, size_t newSize);
-static void aoc_free(void *ptr);
-
-#define AOC_MALLOC aoc_malloc
-#define AOC_FREE aoc_free
-#define AOC_REALLOC aoc_realloc
-
-#include <aoc/arena.h>
-
-aoc_arena arena = {0};
-
-static void *aoc_malloc(size_t size) {
-  return AocArenaAlloc(&arena, size);
-}
-
-static void *aoc_realloc(void *old, size_t newSize) {
-  return AocArenaRealloc(&arena, old, newSize);
-}
-
-static void aoc_free(void *ptr) {
-  (void)ptr;
-}
-
-#include <aoc/aoc.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#define AOC_USE_ARENA_DEFAULT
+#include <aoc/aoc.h>
+#include <aoc/arena.h>
 
 #define AOC_T int32_t
 #define AOC_T_NAME I32
@@ -70,7 +47,6 @@ static int32_t solve_part2(const AocArrayI32 *const numbers) {
     uint32_t hash = 0;
     if (AocHashsetI32Contains(&frequencies, frequency, &hash)) {
       AocHashsetI32Destroy(&frequencies);
-      AOC_LOG("SIZE: %zu\n", frequencies.count);
       return frequency;
     } else {
       AocHashsetI32InsertPreHashed(&frequencies, frequency, hash);
@@ -83,11 +59,11 @@ static int32_t solve_part2(const AocArrayI32 *const numbers) {
   return -1;
 }
 
-#include <time.h>
-
 int main(void) {
+  aoc_arena arena = {0};
   AocArenaAlloc(&arena, 1052592);
   AocArenaReset(&arena);
+  AocSetArena(&arena);
 
   AocArrayI32 numbers = {0};
   AocArrayI32Create(&numbers, 1000);
