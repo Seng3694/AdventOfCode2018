@@ -39,6 +39,7 @@ static inline bool point_equals(const point *const a, const point *const b) {
 #include <aoc/hashset.h>
 
 static void parse_line(char *line, size_t length, void *userData) {
+  (void)length;
   rectangle claim = {0};
   while (*line != '@')
     line++;

@@ -4,10 +4,10 @@ MAKE=make
 RM=rm -f
 BIN:=bin
 
-CFLAGS:=-g -O0 -Wall -std=c99 -fsanitize=address -fsanitize=undefined
+CFLAGS:=-g -O0 -Wall -Wextra -pedantic -std=c99 -fsanitize=address -fsanitize=undefined
 
 ifdef release
-CFLAGS:=-O2 -Wall -std=c99 -DNDEBUG
+CFLAGS:=-O2 -Wall -Wextra -pedantic -std=c99 -DNDEBUG
 AOCAUX_FLAGS:=release=1
 endif
 

@@ -10,6 +10,7 @@
 #include <aoc/array.h>
 
 static inline void parse_line(char *line, size_t length, void *userData) {
+  (void)length;
   AocArrayI32Push(userData, (int32_t)strtol(line, NULL, 10));
 }
 
