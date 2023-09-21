@@ -96,6 +96,8 @@ typedef struct {
 typedef struct {
   uint16_t guardId;
   uint32_t totalSleepTime;
+  uint16_t biggestMinuteValue;
+  uint8_t biggestMinute;
   AocArrayShift shifts;
 } guard_schedule;
 
@@ -130,6 +132,20 @@ static void count_minutes(const AocArrayShift *const shifts,
   }
 }
 
+static void get_biggest_minute(const AocArrayShift *const shifts,
+                               uint16_t *const biggestMinuteValue,
+                               uint8_t *const biggestMinute) {
+  uint16_t minutes[60] = {0};
+  count_minutes(shifts, minutes);
+
+  for (uint8_t i = 0; i < 60; ++i) {
+    if (minutes[i] > *biggestMinuteValue) {
+      *biggestMinuteValue = minutes[i];
+      *biggestMinute = i;
+    }
+  }
+}
+
 static void parse_guard_schedules(const AocArrayRecord *const records,
                                   AocArraySchedule *const schedules) {
   uint32_t i = 0;
@@ -137,16 +153,15 @@ static void parse_guard_schedules(const AocArrayRecord *const records,
     guard_schedule *schedule = NULL;
     const uint16_t guardId = records->items[i].data.guardId;
     if (!try_find_schedule(schedules, guardId, &schedule)) {
-      schedule = AocMalloc(sizeof(guard_schedule));
+      schedule = AocCalloc(1, sizeof(guard_schedule));
       schedule->guardId = guardId;
-      schedule->totalSleepTime = 0;
-      AocArrayShiftCreate(&schedule->shifts, 16);
+      AocArrayShiftCreate(&schedule->shifts, 32);
       AocArraySchedulePush(schedules, schedule);
     }
     i++;
 
     shift s = {0};
-    AocArrayRangeCreate(&s.sleepRanges, 8);
+    AocArrayRangeCreate(&s.sleepRanges, 4);
     uint16_t sleepStartTime = 0;
 
     const record *r = &records->items[i];
@@ -166,54 +181,40 @@ static void parse_guard_schedules(const AocArrayRecord *const records,
     }
     AocArrayShiftPush(&schedule->shifts, s);
   }
+
+  for (size_t i = 0; i < schedules->length; ++i) {
+    guard_schedule *const schedule = schedules->items[i];
+    get_biggest_minute(&schedule->shifts, &schedule->biggestMinuteValue,
+                       &schedule->biggestMinute);
+  }
 }
 
 uint32_t solve_part1(const AocArraySchedule *const schedules) {
-  // find guard with longest time asleep
-  guard_schedule *schedule = NULL;
+  const guard_schedule *schedule = NULL;
   uint32_t longest = 0;
 
+  // find guard with longest time asleep
   for (size_t i = 0; i < schedules->length; ++i) {
     if (schedules->items[i]->totalSleepTime > longest) {
       schedule = schedules->items[i];
     }
   }
 
-  uint16_t minutes[60] = {0};
-  count_minutes(&schedule->shifts, minutes);
-
-  uint16_t minute = 0;
-  uint16_t biggest = 0;
-  for (uint8_t i = 0; i < 60; ++i) {
-    if (minutes[i] > biggest) {
-      biggest = minutes[i];
-      minute = i;
-    }
-  }
-
-  return schedule->guardId * minute;
+  return schedule->guardId * schedule->biggestMinute;
 }
 
 uint32_t solve_part2(const AocArraySchedule *const schedules) {
+  const guard_schedule *schedule = NULL;
   uint16_t biggest = 0;
-  uint16_t minute = 0;
-  uint16_t guardId = 0;
 
   for (size_t i = 0; i < schedules->length; ++i) {
-    const guard_schedule *const schedule = schedules->items[i];
-    uint16_t minutes[60] = {0};
-    count_minutes(&schedule->shifts, minutes);
-
-    for (uint8_t j = 0; j < 60; ++j) {
-      if (minutes[j] > biggest) {
-        biggest = minutes[j];
-        minute = j;
-        guardId = schedule->guardId;
-      }
+    if (schedules->items[i]->biggestMinuteValue > biggest) {
+      biggest = schedules->items[i]->biggestMinuteValue;
+      schedule = schedules->items[i];
     }
   }
 
-  return minute * guardId;
+  return schedule->guardId * schedule->biggestMinute;
 }
 
 int main(void) {
