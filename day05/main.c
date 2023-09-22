@@ -1,13 +1,14 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
+#include <assert.h>
 
-#define AOC_USE_ARENA_DEFAULT
 #include <aoc/aoc.h>
-#include <aoc/arena.h>
+#include <aoc/mem.h>
+#include <aoc/bump.h>
 
-aoc_arena defaultArena = {0};
-aoc_arena listCopyArena = {0};
+static aoc_allocator defaultAllocator = {0};
+static aoc_allocator copyAllocator = {0};
 
 typedef struct node {
   struct node *next;
@@ -15,11 +16,11 @@ typedef struct node {
 } node;
 
 static node *parse(const char *const text, const size_t length) {
-  node *root = AocMalloc(sizeof(node));
+  node *root = AocAlloc(sizeof(node));
   root->value = text[0];
   node *current = root;
   for (size_t i = 1; i < length; ++i) {
-    current->next = AocMalloc(sizeof(node));
+    current->next = AocAlloc(sizeof(node));
     current->next->value = text[i];
     current->next->next = NULL;
     current = current->next;
@@ -65,16 +66,15 @@ static uint32_t solve_part1(node *list, size_t length) {
 
 static size_t custom_copy(node *src, const char ignore, node **out) {
   size_t length = 0;
-
-  AocArenaReset(&listCopyArena);
-  AocSetArena(&listCopyArena);
-
   node *currentSrc = src;
 
   while ((currentSrc->value & ~32) == ignore)
     currentSrc = currentSrc->next;
 
-  node *dest = AocMalloc(sizeof(node));
+  AocMemSetAllocator(&copyAllocator);
+  AocBumpReset(copyAllocator.allocator);
+
+  node *dest = AocAlloc(sizeof(node));
   dest->next = NULL;
   dest->value = currentSrc->value;
 
@@ -82,7 +82,7 @@ static size_t custom_copy(node *src, const char ignore, node **out) {
 
   while (currentSrc->next != NULL) {
     if ((currentSrc->next->value & ~32) != ignore) {
-      currentDest->next = AocMalloc(sizeof(node));
+      currentDest->next = AocAlloc(sizeof(node));
       currentDest->next->next = NULL;
       currentDest->next->value = currentSrc->next->value;
       currentDest = currentDest->next;
@@ -91,7 +91,7 @@ static size_t custom_copy(node *src, const char ignore, node **out) {
     currentSrc = currentSrc->next;
   }
 
-  AocSetArena(&defaultArena);
+  AocMemSetAllocator(&defaultAllocator);
 
   *out = dest;
   return length;
@@ -110,12 +110,14 @@ static uint32_t solve_part2(node *list, const size_t length) {
 }
 
 int main(void) {
-  AocArenaAlloc(&defaultArena, 1200024);
-  AocArenaReset(&defaultArena);
-  AocArenaAlloc(&listCopyArena, 260000);
-  AocArenaReset(&listCopyArena);
+  aoc_bump defaultAlloc = {0};
+  aoc_bump copyAlloc = {0};
+  AocBumpInit(&defaultAlloc, 850024);
+  AocBumpInit(&copyAlloc, 169712);
+  defaultAllocator = AocBumpCreateAllocator(&defaultAlloc);
+  copyAllocator = AocBumpCreateAllocator(&copyAlloc);
 
-  AocSetArena(&defaultArena);
+  AocMemSetAllocator(&defaultAllocator);
 
   char *text = NULL;
   size_t length = 0;
@@ -129,7 +131,6 @@ int main(void) {
   printf("%u\n", part1);
   printf("%u\n", part2);
 
-  AocArenaFree(&defaultArena);
-  AocArenaFree(&listCopyArena);
-  free(text);
+  AocBumpDestroy(&defaultAlloc);
+  AocBumpDestroy(&copyAlloc);
 }
