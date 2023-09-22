@@ -1,9 +1,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define AOC_USE_ARENA_DEFAULT
 #include <aoc/aoc.h>
+#include <aoc/mem.h>
 #include <aoc/arena.h>
+#include <aoc/bump.h>
 
 typedef enum {
   RECORD_TYPE_BEGINS_SHIFT,
@@ -11,7 +12,7 @@ typedef enum {
   RECORD_TYPE_WAKES_UP,
 } record_type;
 
-typedef struct __attribute((packed)) {
+typedef struct __attribute((packed, aligned(sizeof(uintptr_t)))) {
   uint16_t minute : 6;
   uint16_t hour : 5;
   uint16_t day : 5;
@@ -19,13 +20,10 @@ typedef struct __attribute((packed)) {
   uint16_t year : 12;
 } datetime;
 
-typedef union {
-  struct __attribute__((packed)) {
-    uint16_t guardId : 13;
-    record_type type : 2;
-    datetime time;
-  } data;
-  uint64_t all;
+typedef struct {
+  uint16_t guardId : 13;
+  record_type type : 3;
+  datetime time;
 } record;
 
 #define AOC_T record
@@ -45,21 +43,21 @@ static inline void parse_datetime(char *line, char **out, datetime *const dt) {
 static void parse_line(char *line, size_t length, void *userData) {
   (void)length;
   record r = {0};
-  parse_datetime(line, &line, &r.data.time);
+  parse_datetime(line, &line, &r.time);
 
   // "Guard #1231 begins shift"
   // "falls asleep"
   // "wakes up"
   switch (*line) {
   case 'G':
-    r.data.type = RECORD_TYPE_BEGINS_SHIFT;
-    r.data.guardId = strtoul(line + 7, NULL, 10);
+    r.type = RECORD_TYPE_BEGINS_SHIFT;
+    r.guardId = strtoul(line + 7, NULL, 10);
     break;
   case 'f':
-    r.data.type = RECORD_TYPE_FALLS_ASLEEP;
+    r.type = RECORD_TYPE_FALLS_ASLEEP;
     break;
   case 'w':
-    r.data.type = RECORD_TYPE_WAKES_UP;
+    r.type = RECORD_TYPE_WAKES_UP;
     break;
   }
 
@@ -68,12 +66,12 @@ static void parse_line(char *line, size_t length, void *userData) {
 
 static inline int compare_datetime(const datetime *const a,
                                    const datetime *const b) {
-  return *(const int32_t *const)a - *(const int32_t *const)b;
+  return *(const int *const)a - *(const int *const)b;
 }
 
 static inline int compare_records(const void *const a, const void *const b) {
-  return compare_datetime(&((const record *const)a)->data.time,
-                          &((const record *const)b)->data.time);
+  return compare_datetime(&((const record *const)a)->time,
+                          &((const record *const)b)->time);
 }
 
 typedef struct {
@@ -151,7 +149,7 @@ static void parse_guard_schedules(const AocArrayRecord *const records,
   uint32_t i = 0;
   while (i < records->length) {
     guard_schedule *schedule = NULL;
-    const uint16_t guardId = records->items[i].data.guardId;
+    const uint16_t guardId = records->items[i].guardId;
     if (!try_find_schedule(schedules, guardId, &schedule)) {
       schedule = AocCalloc(1, sizeof(guard_schedule));
       schedule->guardId = guardId;
@@ -165,13 +163,13 @@ static void parse_guard_schedules(const AocArrayRecord *const records,
     uint16_t sleepStartTime = 0;
 
     const record *r = &records->items[i];
-    while (i < records->length && r->data.type != RECORD_TYPE_BEGINS_SHIFT) {
-      if (r->data.type == RECORD_TYPE_FALLS_ASLEEP) {
-        sleepStartTime = r->data.time.minute;
+    while (i < records->length && r->type != RECORD_TYPE_BEGINS_SHIFT) {
+      if (r->type == RECORD_TYPE_FALLS_ASLEEP) {
+        sleepStartTime = r->time.minute;
       } else /* wakes up */ {
         range rn = {
             .from = sleepStartTime,
-            .to = r->data.time.minute,
+            .to = r->time.minute,
         };
         schedule->totalSleepTime += (rn.to - rn.from);
         AocArrayRangePush(&s.sleepRanges, rn);
@@ -218,8 +216,11 @@ uint32_t solve_part2(const AocArraySchedule *const schedules) {
 }
 
 int main(void) {
-  aoc_arena arena = {0};
-  AocSetArena(&arena);
+  aoc_bump bump = {0};
+  AocBumpInit(&bump, 41816);
+  aoc_allocator allocator = AocBumpCreateAllocator(&bump);
+
+  AocMemSetAllocator(&allocator);
 
   AocArrayRecord records = {0};
   AocArrayRecordCreate(&records, 1110);
@@ -237,7 +238,5 @@ int main(void) {
   printf("%u\n", part1);
   printf("%u\n", part2);
 
-  // don't need to free anything else because everything is allocated with the
-  // arena
-  AocArenaFree(&arena);
+  AocBumpDestroy(&bump);
 }
