@@ -1,8 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define AOC_USE_ARENA_DEFAULT
 #include <aoc/aoc.h>
+#include <aoc/mem.h>
 #include <aoc/arena.h>
 
 typedef struct {
@@ -122,16 +122,15 @@ static void solve_both(AocArrayRect *const claims, uint32_t *const part1,
       break;
     }
   }
-
-  AocHashsetPointDestroy(&points);
-  AocArrayRectDestroy(&intersections);
 }
 
 int main(void) {
   aoc_arena arena = {0};
   AocArenaAlloc(&arena, 2179096);
   AocArenaReset(&arena);
-  AocSetArena(&arena);
+
+  aoc_allocator allocator = AocArenaCreateAllocator(&arena);
+  AocMemSetAllocator(&allocator);
 
   AocArrayRect claims = {0};
   AocArrayRectCreate(&claims, 1 << 11);
@@ -144,6 +143,5 @@ int main(void) {
 
   printf("%u\n%u\n", part1, part2);
 
-  AocArrayRectDestroy(&claims);
   AocArenaFree(&arena);
 }

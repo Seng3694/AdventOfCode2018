@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define AOC_USE_ARENA_DEFAULT
 #include <aoc/aoc.h>
+#include <aoc/mem.h>
 #include <aoc/arena.h>
 
 #define AOC_T int32_t
@@ -64,7 +64,9 @@ int main(void) {
   aoc_arena arena = {0};
   AocArenaAlloc(&arena, 1052592);
   AocArenaReset(&arena);
-  AocSetArena(&arena);
+
+  aoc_allocator allocator = AocArenaCreateAllocator(&arena);
+  AocMemSetAllocator(&allocator);
 
   AocArrayI32 numbers = {0};
   AocArrayI32Create(&numbers, 1000);
@@ -76,6 +78,5 @@ int main(void) {
   printf("%d\n", part1);
   printf("%d\n", part2);
 
-  AocArrayI32Destroy(&numbers);
   AocArenaFree(&arena);
 }
