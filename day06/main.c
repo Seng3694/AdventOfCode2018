@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <limits.h>
 
-#define AOC_USE_ARENA_DEFAULT
 #include <aoc/aoc.h>
 #include <aoc/arena.h>
+#include <aoc/mem.h>
 
 typedef struct {
   int32_t x;
@@ -284,9 +284,9 @@ static inline uint32_t min(const uint32_t a, const uint32_t b) {
   return a < b ? a : b;
 }
 
-static uint32_t solve_part1(const AocArrayPoint *const points) {
+static uint32_t solve_part1(const AocArrayPoint *const points,
+                            const rectangle bounds) {
   uint32_t largestArea = 0;
-  const rectangle bounds = find_bounds(points);
   AocArrayPoint finitePoints = get_finite_points(points, bounds);
 
   AocArrayPoint surroundingPoints = {0};
@@ -302,20 +302,47 @@ static uint32_t solve_part1(const AocArrayPoint *const points) {
   return largestArea;
 }
 
+static inline uint64_t sum_of_distances(const AocArrayPoint *const points,
+                                        const point p) {
+  uint64_t sum = 0;
+  for (size_t i = 0; i < points->length; ++i)
+    sum += manhattan_distance(p, points->items[i]);
+  return sum;
+}
+
+static uint32_t solve_part2(const AocArrayPoint *const points,
+                            const rectangle bounds) {
+  uint32_t area = 0;
+  for (int32_t y = bounds.top; y < bounds.bottom; ++y) {
+    for (int32_t x = bounds.left; x < bounds.right; ++x) {
+      const uint64_t sum = sum_of_distances(points, (point){x, y});
+      if (sum < 10000)
+        area++;
+    }
+  }
+  return area;
+}
+
 int main(void) {
   aoc_arena arena = {0};
   AocArenaAlloc(&arena, 9360);
   AocArenaReset(&arena);
-  AocSetArena(&arena);
+
+  aoc_allocator allocator = AocArenaCreateAllocator(&arena);
+  AocMemSetAllocator(&allocator);
 
   AocArrayPoint points = {0};
   AocArrayPointCreate(&points, 50);
 
   AocReadFileLineByLine("day06/input.txt", parse_line, &points);
 
-  const uint32_t part1 = solve_part1(&points);
+  const rectangle bounds = find_bounds(&points);
+
+  const uint32_t part1 = solve_part1(&points, bounds);
+  const uint32_t part2 = solve_part2(&points, bounds);
 
   printf("%u\n", part1);
+  printf("%u\n", part2);
 
   AocArenaFree(&arena);
 }
