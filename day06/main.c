@@ -5,6 +5,7 @@
 #include <aoc/aoc.h>
 #include <aoc/arena.h>
 #include <aoc/mem.h>
+#include <aoc/image.h>
 
 typedef struct {
   int32_t x;
@@ -284,9 +285,9 @@ static inline uint32_t min(const uint32_t a, const uint32_t b) {
   return a < b ? a : b;
 }
 
-static uint32_t solve_part1(const AocArrayPoint *const points,
-                            const rectangle bounds) {
+static uint32_t solve_part1(const AocArrayPoint *const points) {
   uint32_t largestArea = 0;
+  const rectangle bounds = find_bounds(points);
   AocArrayPoint finitePoints = get_finite_points(points, bounds);
 
   AocArrayPoint surroundingPoints = {0};
@@ -302,6 +303,19 @@ static uint32_t solve_part1(const AocArrayPoint *const points,
   return largestArea;
 }
 
+static point find_center(const AocArrayPoint *const points) {
+  int64_t sumX = 0;
+  int64_t sumY = 0;
+  for (size_t i = 0; i < points->length; ++i) {
+    sumX += points->items[i].x;
+    sumY += points->items[i].y;
+  }
+  return (point){
+      sumX / points->length,
+      sumY / points->length,
+  };
+}
+
 static inline uint64_t sum_of_distances(const AocArrayPoint *const points,
                                         const point p) {
   uint64_t sum = 0;
@@ -310,16 +324,86 @@ static inline uint64_t sum_of_distances(const AocArrayPoint *const points,
   return sum;
 }
 
-static uint32_t solve_part2(const AocArrayPoint *const points,
-                            const rectangle bounds) {
+typedef enum {
+  DIAMOND_ITER_STATE_START,
+  DIAMOND_ITER_STATE_T_R,
+  DIAMOND_ITER_STATE_R_B,
+  DIAMOND_ITER_STATE_B_L,
+  DIAMOND_ITER_STATE_L_T,
+} diamond_iter_state;
+
+typedef struct {
+  diamond_iter_state state;
+  point center;
+  point current;
+  int32_t layer;
+} diamond_iter;
+
+static bool iterate_diamond(diamond_iter *const iter, point *const p) {
+  bool isOnTheSameLayer = true;
+  switch (iter->state) {
+  case DIAMOND_ITER_STATE_START:
+    iter->current.y--;
+    iter->state = DIAMOND_ITER_STATE_T_R;
+    iter->layer++;
+    break;
+  case DIAMOND_ITER_STATE_T_R:
+    iter->current.x++;
+    iter->current.y++;
+    if (iter->current.x == iter->layer)
+      iter->state = DIAMOND_ITER_STATE_R_B;
+    break;
+  case DIAMOND_ITER_STATE_R_B:
+    iter->current.x--;
+    iter->current.y++;
+    if (iter->current.x == 0)
+      iter->state = DIAMOND_ITER_STATE_B_L;
+    break;
+  case DIAMOND_ITER_STATE_B_L:
+    iter->current.x--;
+    iter->current.y--;
+    if (iter->current.x == -iter->layer)
+      iter->state = DIAMOND_ITER_STATE_L_T;
+    break;
+  case DIAMOND_ITER_STATE_L_T:
+    iter->current.x++;
+    iter->current.y--;
+    if (iter->current.x == 0) {
+      iter->state = DIAMOND_ITER_STATE_T_R;
+      iter->current.y--;
+      iter->layer++;
+      isOnTheSameLayer = false;
+    }
+    break;
+  }
+  p->x = iter->center.x + iter->current.x;
+  p->y = iter->center.y + iter->current.y;
+  return isOnTheSameLayer;
+}
+
+static uint32_t solve_part2(const AocArrayPoint *const points) {
+  const point center = find_center(points);
+
   uint32_t area = 0;
-  for (int32_t y = bounds.top; y < bounds.bottom; ++y) {
-    for (int32_t x = bounds.left; x < bounds.right; ++x) {
-      const uint64_t sum = sum_of_distances(points, (point){x, y});
+  uint32_t previousArea = 0;
+
+  diamond_iter iterator = {.center = center};
+  point current = center;
+
+  for (;;) {
+    previousArea = area;
+
+    // iterate one diamond layer
+    do {
+      const uint32_t sum = sum_of_distances(points, current);
       if (sum < 10000)
         area++;
-    }
+    } while (iterate_diamond(&iterator, &current));
+
+    if (previousArea == area)
+      break;
   }
+
   return area;
 }
 
@@ -336,10 +420,8 @@ int main(void) {
 
   AocReadFileLineByLine("day06/input.txt", parse_line, &points);
 
-  const rectangle bounds = find_bounds(&points);
-
-  const uint32_t part1 = solve_part1(&points, bounds);
-  const uint32_t part2 = solve_part2(&points, bounds);
+  const uint32_t part1 = solve_part1(&points);
+  const uint32_t part2 = solve_part2(&points);
 
   printf("%u\n", part1);
   printf("%u\n", part2);
