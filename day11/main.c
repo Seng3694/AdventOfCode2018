@@ -3,45 +3,35 @@
 #define SERIAL_NUMBER 5177 // input
 #define GRID_SIZE 300
 
-static void calc_fuel_values(int *const grid) {
-  for (int y = 0; y < GRID_SIZE; ++y) {
-    for (int x = 0; x < GRID_SIZE; ++x) {
-      const int rackId = (x + 1) + 10;
-      int powerLevel = rackId * (y + 1);
-      powerLevel += SERIAL_NUMBER;
-      powerLevel *= rackId;
-      powerLevel = (powerLevel / 100) % 10;
-      powerLevel -= 5;
-      grid[y * GRID_SIZE + x] = powerLevel;
-    }
-  }
+static inline int calc_fuel_value(const int x, const int y) {
+  const int rackId = (x + 1) + 10;
+  return (((((rackId * (y + 1)) + SERIAL_NUMBER) * rackId) / 100) % 10) - 5;
 }
 
-static void calc_sum_grid(int *const grid, int *const sumGrid) {
-  sumGrid[0] = grid[0];
+static void create_sum_grid(int *const sumGrid) {
+  sumGrid[0] = calc_fuel_value(0, 0);
 
-  // first columns
+  // first column
   for (int i = 0; i < GRID_SIZE * GRID_SIZE; i += GRID_SIZE)
-    sumGrid[i] = grid[i];
+    sumGrid[i] = calc_fuel_value(0, i);
 
   // first row
   for (int i = 1; i < GRID_SIZE; ++i)
-    sumGrid[i] = sumGrid[i - 1] + grid[i];
+    sumGrid[i] = sumGrid[i - 1] + calc_fuel_value(i, 0);
 
   // rows
   for (int y = 0; y < GRID_SIZE; ++y) {
     for (int x = 1; x < GRID_SIZE; ++x) {
-      int i = y * GRID_SIZE + x;
-      sumGrid[i] = sumGrid[i - 1] + grid[i];
+      const int i = y * GRID_SIZE + x;
+      sumGrid[i] = sumGrid[i - 1] + calc_fuel_value(x, y);
     }
   }
 
   // columns
   for (int x = 0; x < GRID_SIZE; ++x) {
     for (int y = 1; y < GRID_SIZE; ++y) {
-      int i = y * GRID_SIZE + x;
-      int prev_i = (y - 1) * GRID_SIZE + x;
-      sumGrid[i] += sumGrid[prev_i];
+      const int i = y * GRID_SIZE + x;
+      sumGrid[i] += sumGrid[i - GRID_SIZE];
     }
   }
 }
@@ -61,12 +51,12 @@ static int calc_total_power(const int *const grid, int x, int y, int size) {
   return p;
 }
 
-static int solve_part1(const int *const grid, const int size, int *const outX,
+static int solve_part1(const int *const grid, int *const outX,
                        int *const outY) {
   int largestPower = 0;
-  for (int y = 0; y < (GRID_SIZE - size); ++y) {
-    for (int x = 0; x < (GRID_SIZE - size); ++x) {
-      const int totalPower = calc_total_power(grid, x, y, size);
+  for (int y = 0; y < (GRID_SIZE - 3); ++y) {
+    for (int x = 0; x < (GRID_SIZE - 3); ++x) {
+      const int totalPower = calc_total_power(grid, x, y, 3);
       if (totalPower > largestPower) {
         largestPower = totalPower;
         *outX = x + 1;
@@ -98,15 +88,12 @@ static void solve_part2(const int *const grid, int *const outX, int *const outY,
 }
 
 int main(void) {
-  int grid[GRID_SIZE * GRID_SIZE] = {0};
-  calc_fuel_values(grid);
-
   int sumGrid[GRID_SIZE * GRID_SIZE] = {0};
-  calc_sum_grid(grid, sumGrid);
+  create_sum_grid(sumGrid);
 
   int x1 = 0;
   int y1 = 0;
-  solve_part1(sumGrid, 3, &x1, &y1);
+  solve_part1(sumGrid, &x1, &y1);
 
   int x2 = 0;
   int y2 = 0;
