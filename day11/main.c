@@ -43,16 +43,27 @@ static int solve_part1(const int *const grid, const int squareSize,
 static void solve_part2(const int *const grid, int *const outX, int *const outY,
                         int *const outSize) {
   int largestPower = 0;
-
-  for (int size = 1; size <= 300; ++size) {
-    int x = 0;
-    int y = 0;
-    int power = solve_part1(grid, size, &x, &y);
-    if (power > largestPower) {
-      *outX = x;
-      *outY = y;
-      *outSize = size;
-      largestPower = power;
+  for (int y = 0; y < GRID_SIZE; ++y) {
+    for (int x = 0; x < GRID_SIZE; ++x) {
+      int totalPower = 0;
+      for (int size = 1; size <= GRID_SIZE; ++size) {
+        if (x + size > GRID_SIZE || y + size > GRID_SIZE)
+          break;
+        for (int sy = 0; sy < size - 1; ++sy) {
+          const int index = (y + sy) * GRID_SIZE + (x + size - 1);
+          totalPower += grid[index];
+        }
+        for (int sx = 0; sx < size; ++sx) {
+          const int index = (y + size - 1) * GRID_SIZE + (x + sx);
+          totalPower += grid[index];
+        }
+        if (totalPower > largestPower) {
+          largestPower = totalPower;
+          *outX = x + 1;
+          *outY = y + 1;
+          *outSize = size;
+        }
+      }
     }
   }
 }
@@ -67,6 +78,7 @@ int main(void) {
   int y2 = 0;
   int size = 0;
   solve_part2(grid, &x2, &y2, &size);
+
   printf("%d,%d\n", x1, y1);
   printf("%d,%d,%d\n", x2, y2, size);
 }
