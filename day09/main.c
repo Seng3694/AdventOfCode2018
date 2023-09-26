@@ -62,7 +62,7 @@ static uint32_t solve(const uint32_t players, const uint32_t lastMarbleWorth) {
   current->value = 0;
 
   uint32_t i = 1;
-  while (i < lastMarbleWorth) {
+  for (;;) {
     for (uint32_t p = 0; p < players; ++p) {
       if (i % 23 == 0) {
         scores[p] += i;
@@ -71,8 +71,12 @@ static uint32_t solve(const uint32_t players, const uint32_t lastMarbleWorth) {
         current = insert_at_cw(current, 1, i);
       }
       i++;
+      if (i == lastMarbleWorth)
+        goto done;
     }
   }
+
+done:;
 
   uint32_t highestScore = 0;
   for (uint32_t i = 0; i < players; ++i) {
