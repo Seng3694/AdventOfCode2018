@@ -60,20 +60,21 @@ static inline int calc_power(const int *const grid, const int x, const int y,
          grid[(y - 1) * GRID_SIZE + (x - 1)];
 }
 
-static int solve_part1(const int *const grid, int *const outX,
+static int solve_part1(const int *const grid, const int size, int *const outX,
                        int *const outY) {
-  int largestPower = calc_power_zero(grid, 3);
+  int largestPower = calc_power_zero(grid, size);
 
-  for (int x = 1; x < (GRID_SIZE - 3); ++x) {
-    const int totalPower = calc_power_first_row(grid, x, 3);
+  for (int x = 1; x < (GRID_SIZE - size); ++x) {
+    const int totalPower = calc_power_first_row(grid, x, size);
     if (totalPower > largestPower) {
       largestPower = totalPower;
       *outX = x + 1;
       *outY = 1;
     }
   }
-  for (int y = 1; y < (GRID_SIZE - 3); ++y) {
-    const int totalPower = calc_power_first_column(grid, y, 3);
+
+  for (int y = 1; y < (GRID_SIZE - size); ++y) {
+    const int totalPower = calc_power_first_column(grid, y, size);
     if (totalPower > largestPower) {
       largestPower = totalPower;
       *outX = 1;
@@ -81,9 +82,9 @@ static int solve_part1(const int *const grid, int *const outX,
     }
   }
 
-  for (int y = 1; y < (GRID_SIZE - 3); ++y) {
-    for (int x = 1; x < (GRID_SIZE - 3); ++x) {
-      const int totalPower = calc_power(grid, x, y, 3);
+  for (int y = 1; y < (GRID_SIZE - size); ++y) {
+    for (int x = 1; x < (GRID_SIZE - size); ++x) {
+      const int totalPower = calc_power(grid, x, y, size);
       if (totalPower > largestPower) {
         largestPower = totalPower;
         *outX = x + 1;
@@ -91,61 +92,22 @@ static int solve_part1(const int *const grid, int *const outX,
       }
     }
   }
+
   return largestPower;
 }
 
 static void solve_part2(const int *const grid, int *const outX, int *const outY,
                         int *const outSize) {
   int largestPower = 0;
-
   for (int size = 1; size <= GRID_SIZE; ++size) {
-    const int totalPower = calc_power_zero(grid, size);
-    if (totalPower > largestPower) {
-      largestPower = totalPower;
-      *outX = 1;
-      *outY = 1;
-    }
-  }
-
-  for (int x = 1; x < (GRID_SIZE - 3); ++x) {
-    for (int size = 1; size <= GRID_SIZE; ++size) {
-      if (x + size > GRID_SIZE)
-        break;
-      const int totalPower = calc_power_first_row(grid, x, size);
-      if (totalPower > largestPower) {
-        largestPower = totalPower;
-        *outX = x + 1;
-        *outY = 1;
-      }
-    }
-  }
-
-  for (int y = 1; y < (GRID_SIZE - 3); ++y) {
-    for (int size = 1; size <= GRID_SIZE; ++size) {
-      if (y + size > GRID_SIZE)
-        break;
-      const int totalPower = calc_power_first_column(grid, y, size);
-      if (totalPower > largestPower) {
-        largestPower = totalPower;
-        *outX = 1;
-        *outY = y + 1;
-      }
-    }
-  }
-
-  for (int y = 1; y < GRID_SIZE; ++y) {
-    for (int x = 1; x < GRID_SIZE; ++x) {
-      for (int size = 1; size <= GRID_SIZE; ++size) {
-        if (x + size > GRID_SIZE || y + size > GRID_SIZE)
-          break;
-        const int totalPower = calc_power(grid, x, y, size);
-        if (totalPower > largestPower) {
-          largestPower = totalPower;
-          *outX = x + 1;
-          *outY = y + 1;
-          *outSize = size;
-        }
-      }
+    int x = 0;
+    int y = 0;
+    const int power = solve_part1(grid, size, &x, &y);
+    if (power > largestPower) {
+      largestPower = power;
+      *outX = x;
+      *outY = y;
+      *outSize = size;
     }
   }
 }
@@ -156,7 +118,7 @@ int main(void) {
 
   int x1 = 0;
   int y1 = 0;
-  solve_part1(sumGrid, &x1, &y1);
+  solve_part1(sumGrid, 3, &x1, &y1);
 
   int x2 = 0;
   int y2 = 0;
