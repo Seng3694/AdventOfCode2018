@@ -8,27 +8,30 @@
 #define AOC_T_NAME Int
 #include <aoc/array.h>
 
-static void tick(AocArrayInt *const recipes, int *const a, int *const b) {
-  int sum = recipes->items[*a] + recipes->items[*b];
-  const int newRecipe2 = sum % 10;
-  sum /= 10;
-  if (sum > 0)
-    AocArrayIntPush(recipes, sum % 10); // newRecipe1
-  AocArrayIntPush(recipes, newRecipe2);
-  *a = (*a + (recipes->items[*a] + 1)) % recipes->length;
-  *b = (*b + (recipes->items[*b] + 1)) % recipes->length;
+static int append_sum_digits(AocArrayInt *const recipes, const int sum) {
+  AocArrayIntEnsureCapacity(recipes, recipes->length + 2);
+  const int onesDigit = sum % 10;
+  const int tensDigit = sum / 10;
+  recipes->items[recipes->length] = tensDigit;
+  recipes->items[recipes->length + tensDigit] = onesDigit;
+  recipes->length += (1 + tensDigit);
+  return 1 + tensDigit;
 }
 
 static void solve_part1(const int input) {
   AocArrayInt recipes = {0};
-  AocArrayIntCreate(&recipes, 240000);
+  AocArrayIntCreate(&recipes, input + 1000);
   AocArrayIntPush(&recipes, 3);
   AocArrayIntPush(&recipes, 7);
 
   int a = 0;
   int b = 1;
-  while (recipes.length <= input + 10)
-    tick(&recipes, &a, &b);
+
+  while (recipes.length <= input + 10) {
+    append_sum_digits(&recipes, recipes.items[a] + recipes.items[b]);
+    a = (a + (recipes.items[a] + 1)) % recipes.length;
+    b = (b + (recipes.items[b] + 1)) % recipes.length;
+  }
 
   for (int i = 0; i < 10; ++i)
     putchar(recipes.items[input + i] + '0');
