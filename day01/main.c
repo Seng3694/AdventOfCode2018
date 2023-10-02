@@ -3,7 +3,7 @@
 
 #include <aoc/aoc.h>
 #include <aoc/mem.h>
-#include <aoc/arena.h>
+#include <aoc/bump.h>
 
 #define AOC_T int32_t
 #define AOC_T_NAME I32
@@ -61,11 +61,10 @@ static int32_t solve_part2(const AocArrayI32 *const numbers) {
 }
 
 int main(void) {
-  aoc_arena arena = {0};
-  AocArenaAlloc(&arena, 1052592);
-  AocArenaReset(&arena);
+  aoc_bump bump = {0};
+  AocBumpInit(&bump, 1052592);
 
-  aoc_allocator allocator = AocArenaCreateAllocator(&arena);
+  aoc_allocator allocator = AocBumpCreateAllocator(&bump);
   AocMemSetAllocator(&allocator);
 
   AocArrayI32 numbers = {0};
@@ -78,5 +77,5 @@ int main(void) {
   printf("%d\n", part1);
   printf("%d\n", part2);
 
-  AocArenaFree(&arena);
+  AocBumpDestroy(&bump);
 }
