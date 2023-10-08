@@ -191,6 +191,7 @@ int32_t shortest_path_to_target(const map *const m, const point from,
                                 const point to, const unit_type targetType,
                                 point *const nextPosition,
                                 point *const nextTargetPosition) {
+  // todo: could probably do something a lot faster with A*
   AocBumpReset(&pathFindingBump);
   AocMemSetAllocator(&pathFindingAllocator);
 
@@ -436,6 +437,7 @@ done:;
 }
 
 static uint32_t solve_part2(const context *const baseCtx, context *const ctx) {
+  // todo: could probably do binary search instead
   uint32_t elfAp = 4;
   uint32_t result = 0;
   uint32_t remainingElves = 0;
