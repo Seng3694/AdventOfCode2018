@@ -4,6 +4,12 @@
 
 #include <aoc/aoc.h>
 #include <aoc/mem.h>
+#include <aoc/bump.h>
+
+aoc_bump mainBump = {0};
+aoc_bump pathFindingBump = {0};
+aoc_allocator mainAllocator = {0};
+aoc_allocator pathFindingAllocator = {0};
 
 typedef struct {
   uint8_t x;
@@ -17,7 +23,7 @@ typedef enum {
 
 typedef struct {
   unit_type type;
-  int16_t hp;
+  int32_t hp;
   point pos;
   int8_t id;
 } unit;
@@ -44,8 +50,6 @@ typedef struct {
   uint8_t counts[2];
 } context;
 
-#define UNIT_TO_STR(type) (type == UNIT_TYPE_GOBLIN ? "goblin" : "elf")
-
 #define AOC_T point
 #define AOC_T_NAME Point
 #include <aoc/array.h>
@@ -65,16 +69,6 @@ static inline bool point_equals(const point *const a, const point *const b) {
 #define AOC_T_EQUALS point_equals
 #define AOC_BASE2_CAPACITY
 #include <aoc/hashset.h>
-
-static const int8_t unit_ap[2] = {
-    [UNIT_TYPE_GOBLIN] = 3,
-    [UNIT_TYPE_ELF] = 3,
-};
-
-static const int16_t unit_hp[2] = {
-    [UNIT_TYPE_GOBLIN] = 200,
-    [UNIT_TYPE_ELF] = 200,
-};
 
 void parse_line(char *line, size_t length, void *userData,
                 const size_t lineNumber) {
@@ -100,7 +94,7 @@ void parse_line(char *line, size_t length, void *userData,
           .pos.x = x,
           .pos.y = y,
           .id = ctx->counts[UNIT_TYPE_GOBLIN],
-          .hp = unit_hp[UNIT_TYPE_GOBLIN],
+          .hp = 200,
           .type = UNIT_TYPE_GOBLIN,
       };
       t.u = &ctx->units[UNIT_TYPE_GOBLIN][ctx->counts[UNIT_TYPE_GOBLIN]];
@@ -112,7 +106,7 @@ void parse_line(char *line, size_t length, void *userData,
           .pos.x = x,
           .pos.y = y,
           .id = ctx->counts[UNIT_TYPE_ELF],
-          .hp = unit_hp[UNIT_TYPE_ELF],
+          .hp = 200,
           .type = UNIT_TYPE_ELF,
       };
       t.u = &ctx->units[UNIT_TYPE_ELF][ctx->counts[UNIT_TYPE_ELF]];
@@ -125,15 +119,30 @@ void parse_line(char *line, size_t length, void *userData,
   }
 }
 
-static inline int compare_point(const point *const a, const point *const b) {
-  return (((int)a->y << 8) | a->x) - (((int)b->y << 8) | b->x);
+static void copy_context(context *const dest, const context *const src) {
+  dest->map.size = src->map.size;
+  AocMemCopy(dest->map.data, src->map.data,
+             sizeof(tile) * (size_t)src->map.size * (size_t)src->map.size);
+  AocMemCopy(dest->units, src->units, sizeof(unit) * 2 * 32);
+  AocMemCopy(dest->counts, src->counts, sizeof(uint8_t) * 2);
+
+  for (uint8_t t = 0; t < 2; ++t) {
+    for (uint8_t i = 0; i < src->counts[t]; ++i) {
+      const unit *const u = &src->units[t][i];
+      dest->map.data[u->pos.y * src->map.size + u->pos.x].u =
+          &dest->units[t][i];
+    }
+  }
 }
 
-static inline int compare_unit(const void *const left,
-                               const void *const right) {
-  const unit *const a = left;
-  const unit *const b = right;
-  return compare_point(&a->pos, &b->pos);
+static void clone_context(context *const dest, const context *const src) {
+  dest->map.data =
+      AocAlloc(sizeof(tile) * (size_t)src->map.size * (size_t)src->map.size);
+  copy_context(dest, src);
+}
+
+static inline int compare_point(const point *const a, const point *const b) {
+  return (((int)a->y << 8) | a->x) - (((int)b->y << 8) | b->x);
 }
 
 static inline int compare_unit_ptr(const void *const left,
@@ -143,64 +152,8 @@ static inline int compare_unit_ptr(const void *const left,
   return compare_point(&(*a)->pos, &(*b)->pos);
 }
 
-static inline void sort_units(unit *const units, const uint8_t count) {
-  qsort(units, count, sizeof(unit), compare_unit);
-}
-
 static inline void sort_unit_ptrs(unit **const units, const uint8_t count) {
   qsort(units, count, sizeof(unit *), compare_unit_ptr);
-}
-
-static inline uint8_t fast_abs(const int8_t n) {
-  const uint8_t mask = n >> (sizeof(uint8_t) * CHAR_BIT - 1);
-  return (n + mask) ^ mask;
-}
-
-static inline uint8_t taxicab(const int8_t x1, const int8_t y1, const int8_t x2,
-                              const int8_t y2) {
-  return fast_abs(x1 - x2) + fast_abs(y1 - y2);
-}
-
-static inline uint8_t taxicab2(const point p1, const point p2) {
-  return taxicab(p1.x, p1.y, p2.x, p2.y);
-}
-
-static void print_map(const map *const m) {
-  const tile *current = m->data;
-  for (int8_t y = 0; y < m->size; ++y) {
-    printf(" ");
-    for (int8_t x = 0; x < m->size; ++x) {
-      switch (current[x].type) {
-      case TILE_TYPE_EMPTY:
-        printf("\e[0;30m.\e[0m ");
-        break;
-      case TILE_TYPE_WALL:
-        printf("\e[0;30m■\e[0m ");
-        break;
-      case TILE_TYPE_UNIT:
-        if (current[x].u->type == UNIT_TYPE_GOBLIN) {
-          printf("\e[0;31mG\e[0m ");
-        } else {
-          printf("\e[0;32mE\e[0m ");
-        }
-        break;
-      }
-    }
-
-    for (uint8_t x = 0; x < m->size; ++x) {
-      if (current[x].u != NULL) {
-        if (current[x].u->type == UNIT_TYPE_GOBLIN) {
-          printf(" \e[0;31mG(%i)\e[0m", current[x].u->hp);
-        } else {
-          printf(" \e[0;32mE(%i)\e[0m", current[x].u->hp);
-        }
-      }
-    }
-
-    printf("\n");
-    current += m->size;
-  }
-  printf("\n");
 }
 
 void get_valid_adjacent_points(const map *const m, const point pos,
@@ -238,6 +191,9 @@ int32_t shortest_path_to_target(const map *const m, const point from,
                                 const point to, const unit_type targetType,
                                 point *const nextPosition,
                                 point *const nextTargetPosition) {
+  AocBumpReset(&pathFindingBump);
+  AocMemSetAllocator(&pathFindingAllocator);
+
   AocArrayBfsData data = {0};
   AocArrayBfsDataCreate(&data, 1 << 12);
 
@@ -340,6 +296,8 @@ int32_t shortest_path_to_target(const map *const m, const point from,
 
   AocHashsetPointDestroy(&visited);
   AocArrayBfsDataDestroy(&data);
+
+  AocMemSetAllocator(&mainAllocator);
   return shortestPathLength;
 }
 
@@ -368,7 +326,9 @@ bool get_adjacent_target(const map *const m, const unit *const u,
   return false;
 }
 
-uint32_t solve_part1(context *const ctx) {
+static void solve_part1(context *const ctx, const uint32_t elfAp,
+                        uint32_t *const result,
+                        uint32_t *const remainingElves) {
   unit *allUnits[64] = {0};
   uint8_t allUnitsCount = 0;
   uint8_t remainingCounts[2] = {
@@ -380,6 +340,11 @@ uint32_t solve_part1(context *const ctx) {
     allUnits[allUnitsCount++] = &ctx->units[UNIT_TYPE_GOBLIN][i];
   for (uint8_t i = 0; i < ctx->counts[UNIT_TYPE_ELF]; ++i)
     allUnits[allUnitsCount++] = &ctx->units[UNIT_TYPE_ELF][i];
+
+  const uint32_t ap[] = {
+      [UNIT_TYPE_GOBLIN] = 3,
+      [UNIT_TYPE_ELF] = elfAp,
+  };
 
   uint32_t rounds = 0;
   for (rounds = 0;; ++rounds) {
@@ -446,7 +411,7 @@ uint32_t solve_part1(context *const ctx) {
 
       if (get_adjacent_target(&ctx->map, u, &target)) {
       attack:
-        target->hp -= unit_ap[u->type];
+        target->hp -= ap[u->type];
         if (target->hp <= 0) {
           ctx->map.data[target->pos.y * ctx->map.size + target->pos.x].u = NULL;
           ctx->map.data[target->pos.y * ctx->map.size + target->pos.x].type =
@@ -465,16 +430,43 @@ done:;
   for (uint8_t i = 0; i < ctx->counts[UNIT_TYPE_ELF]; ++i)
     totalHp += ctx->units[UNIT_TYPE_ELF][i].hp;
 
-  return rounds * totalHp;
+  *result = totalHp * rounds;
+  if (remainingElves != NULL)
+    *remainingElves = remainingCounts[UNIT_TYPE_ELF];
+}
+
+static uint32_t solve_part2(const context *const baseCtx, context *const ctx) {
+  uint32_t elfAp = 4;
+  uint32_t result = 0;
+  uint32_t remainingElves = 0;
+  do {
+    copy_context(ctx, baseCtx);
+    solve_part1(ctx, elfAp, &result, &remainingElves);
+    elfAp++;
+  } while (remainingElves != baseCtx->counts[UNIT_TYPE_ELF]);
+  return result;
 }
 
 int main(void) {
+  AocBumpInit(&mainBump, 40000);
+  AocBumpInit(&pathFindingBump, 40000);
+
+  mainAllocator = AocBumpCreateAllocator(&mainBump);
+  pathFindingAllocator = AocBumpCreateAllocator(&pathFindingBump);
+  AocMemSetAllocator(&mainAllocator);
+
   context ctx = {0};
   AocReadFileLineByLineEx("day15/input.txt", parse_line, &ctx);
+  context clone = {0};
+  clone_context(&clone, &ctx);
 
-  const uint32_t part1 = solve_part1(&ctx);
+  uint32_t part1 = 0;
+  solve_part1(&clone, 3, &part1, NULL);
+  const uint32_t part2 = solve_part2(&ctx, &clone);
 
   printf("%u\n", part1);
+  printf("%u\n", part2);
 
-  AocFree(ctx.map.data);
+  AocBumpDestroy(&pathFindingBump);
+  AocBumpDestroy(&mainBump);
 }
