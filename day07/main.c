@@ -45,19 +45,17 @@ static inline void parse(char *line, size_t length, void *userData) {
 }
 
 static void topsort(graph *const g, result *const r) {
-  if (r->length == VERTEX_COUNT)
-    return;
+  while (r->length != VERTEX_COUNT) {
+    for (u8 i = 0; i < VERTEX_COUNT; ++i) {
+      if (g->indegree[i] == 0 && !g->nodes[i].visited) {
 
-  for (u8 i = 0; i < VERTEX_COUNT; ++i) {
-    if (g->indegree[i] == 0 && !g->nodes[i].visited) {
+        for (u8 j = 0; j < g->nodes[i].count; ++j)
+          g->indegree[g->nodes[i].adjacent[j]]--;
 
-      for (u8 j = 0; j < g->nodes[i].count; ++j)
-        g->indegree[g->nodes[i].adjacent[j]]--;
-
-      r->data[r->length++] = (i + 'A');
-      g->nodes[i].visited = true;
-
-      topsort(g, r);
+        r->data[r->length++] = (i + 'A');
+        g->nodes[i].visited = true;
+        break;
+      }
     }
   }
 }
