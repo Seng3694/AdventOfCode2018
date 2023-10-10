@@ -16,10 +16,10 @@ typedef struct {
 #include <aoc/array.h>
 
 typedef struct {
-  u32 fromX;
-  u32 toX;
-  u32 fromY;
-  u32 toY;
+  u16 fromX;
+  u16 toX;
+  u16 fromY;
+  u16 toY;
 } clay;
 
 #define AOC_T clay
@@ -28,10 +28,10 @@ typedef struct {
 
 typedef struct {
   AocArrayClay clay;
-  u32 minX;
-  u32 minY;
-  u32 maxX;
-  u32 maxY;
+  u16 minX;
+  u16 minY;
+  u16 maxX;
+  u16 maxY;
 } context;
 
 typedef enum {
@@ -42,25 +42,11 @@ typedef enum {
   TILE_TYPE_SETTLED_WATER,
 } tile_type;
 
-static const char *tileTypeCharMap[] = {
-    [TILE_TYPE_EMPTY] = ".",         [TILE_TYPE_SOLID] = "█",
-    [TILE_TYPE_FALLING_WATER] = "|", [TILE_TYPE_SURFACE_WATER] = "~",
-    [TILE_TYPE_SETTLED_WATER] = "█",
-};
-
-static const char *tileTypeColorMap[] = {
-    [TILE_TYPE_EMPTY] = "\e[0;30m",
-    [TILE_TYPE_SOLID] = "\e[0;30m",
-    [TILE_TYPE_FALLING_WATER] = "\e[0;36m",
-    [TILE_TYPE_SURFACE_WATER] = "\e[0;36m",
-    [TILE_TYPE_SETTLED_WATER] = "\e[0;34m",
-};
-
 typedef struct {
-  u32 width;
-  u32 height;
-  u32 offsetX;
-  u32 offsetY;
+  u16 width;
+  u16 height;
+  u16 offsetX;
+  u16 offsetY;
   tile_type tiles[];
 } map;
 
@@ -91,8 +77,8 @@ static void parse(char *line, size_t length, void *userData) {
 
 static map *create_map(const context *const ctx) {
   // expand width on the sides by 1 for water on the edges
-  const u32 w = ((ctx->maxX + 1) - ctx->minX) + 2;
-  const u32 h = ctx->maxY + 1;
+  const u16 w = ((ctx->maxX + 1) - ctx->minX) + 2;
+  const u16 h = ctx->maxY + 1;
   map *m = AocCalloc(1, sizeof(map) + (sizeof(tile_type) * w * h));
   m->width = w;
   m->height = h;
@@ -101,8 +87,8 @@ static map *create_map(const context *const ctx) {
   m->offsetY = ctx->minY;
   for (size_t i = 0; i < ctx->clay.length; ++i) {
     const clay c = ctx->clay.items[i];
-    for (u32 y = c.fromY; y < c.toY + 1; ++y) {
-      for (u32 x = c.fromX; x < c.toX + 1; ++x) {
+    for (u16 y = c.fromY; y < c.toY + 1; ++y) {
+      for (u16 x = c.fromX; x < c.toX + 1; ++x) {
         const u32 index = y * m->width + (x - m->offsetX + 2);
         m->tiles[index] = TILE_TYPE_SOLID;
       }
@@ -110,32 +96,6 @@ static map *create_map(const context *const ctx) {
   }
   return m;
 }
-
-static i32 clamp(const i32 value, const i32 min, const i32 max) {
-  if (value < min)
-    return min;
-  else if (value > max)
-    return max;
-  return value;
-}
-
-#if 1
-static void print_map(const map *const m, const i32 fromY, const i32 toY) {
-  for (i32 y = fromY; y < toY; ++y) {
-    printf("%4d: ", y);
-    for (i32 x = 0; x < m->width; ++x) {
-      u32 i = y * m->width + x;
-      printf("%s%s\e[0m", tileTypeColorMap[m->tiles[i]],
-             tileTypeCharMap[m->tiles[i]]);
-    }
-    printf("\n");
-  }
-  printf("\n");
-}
-#else
-static void print_map(const map *const m, const i32 fromY, const i32 toY) {
-}
-#endif
 
 static inline bool can_be_settled_on(const tile_type t) {
   return t == TILE_TYPE_SOLID || t == TILE_TYPE_SETTLED_WATER;
@@ -216,9 +176,10 @@ static void fill_reservoir(map *const m, const point p,
   } while (leftCanBeSettledOn && rightCanBeSettledOn);
 }
 
-static void solve(map *const m, u32 *const part1, u32 *const part2) {
+static void solve(map *const m, const u32 yOffset, u32 *const part1,
+                  u32 *const part2) {
   AocArrayPoint current = {0};
-  AocArrayPointCreate(&current, 128);
+  AocArrayPointCreate(&current, 16);
   AocArrayPointPush(&current, (point){500 - m->offsetX + 2, 0});
 
   while (current.length > 0) {
@@ -251,13 +212,12 @@ static void solve(map *const m, u32 *const part1, u32 *const part2) {
     current.length = newLength;
   }
 
+  // skip all rows until the first clay block
   const u32 mapSize = m->width * m->height;
-  for (u32 i = 0; i < mapSize; ++i)
-    *part1 += (m->tiles[i] >= TILE_TYPE_FALLING_WATER);
-  for (u32 i = 0; i < mapSize; ++i)
-    *part2 += (m->tiles[i] == TILE_TYPE_SETTLED_WATER);
-
-  print_map(m, 0, m->height);
+  for (size_t i = yOffset * m->width; i < mapSize; ++i) {
+    *part1 += m->tiles[i] >= TILE_TYPE_FALLING_WATER;
+    *part2 += m->tiles[i] == TILE_TYPE_SETTLED_WATER;
+  }
 
   AocArrayPointDestroy(&current);
 }
@@ -270,9 +230,7 @@ int main(void) {
 
   u32 part1 = 0;
   u32 part2 = 0;
-  solve(m, &part1, &part2);
-  // TODO: this is actually not the correct answer
-  // it's off by a few for most inputs. 2 in my case
+  solve(m, ctx.minY, &part1, &part2);
   printf("%u\n", part1);
   printf("%u\n", part2);
 
