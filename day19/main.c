@@ -1,34 +1,24 @@
-#define USE_COMPUTED_GOTO
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <aoc/aoc.h>
 
-typedef int32_t i32;
-typedef uint8_t u8;
-typedef i32 registers[6];
-
-#define OP_CODE_LIST(f)                                                        \
-  f(nop), f(addr), f(addi), f(mulr), f(muli), f(banr), f(bani), f(borr),       \
-      f(bori), f(setr), f(seti), f(gtir), f(gtri), f(gtrr), f(eqir), f(eqri),  \
-      f(eqrr)
-
-#define OP_CODE_ENUM(name) op_##name
-
+// clang-format off
 typedef enum {
-  OP_CODE_LIST(OP_CODE_ENUM),
+  op_addr, op_addi, op_mulr, op_muli, op_banr, op_bani, op_borr, op_bori, 
+  op_setr, op_seti, op_gtir, op_gtri, op_gtrr, op_eqir, op_eqri, op_eqrr
 } op_code;
+// clang-format on
 
 typedef struct __attribute__((packed)) {
   op_code code : 8;
-  u8 a, b, c;
+  uint8_t a, b, c;
 } instruction;
 
 typedef struct {
   instruction instructions[64];
-  registers registers;
-  u8 instructionCount;
-  i32 *ip;
+  int registers[6];
+  uint8_t instructionCount;
+  uint8_t ipIndex;
 } program;
 
 static void parse(char *s, size_t length, void *userData,
@@ -36,7 +26,7 @@ static void parse(char *s, size_t length, void *userData,
   (void)length;
   program *const p = userData;
   if (lineNumber == 0) {
-    p->ip = &p->registers[strtol(s + 4, NULL, 10)];
+    p->ipIndex = strtol(s + 4, NULL, 10);
     return;
   }
   instruction i = {0};
@@ -56,68 +46,59 @@ static void parse(char *s, size_t length, void *userData,
   p->instructions[p->instructionCount++] = i;
 }
 
-static i32 run(program *const p) {
-  i32 *r = p->registers;
-  register i32 *ip = p->ip;
-  instruction *instructions = p->instructions;
-
-#define INSTR instructions[*ip]
-
-#ifdef USE_COMPUTED_GOTO
-
-#define OP_CODE_LABEL(name) op_label_##name
-  static const void *dispatchTable[] = {
-      OP_CODE_LIST(&&OP_CODE_LABEL),
-  };
-#define LOOP
-#define SWITCH(x)
-#define DISPATCH() goto *dispatchTable[instructions[++(*ip)].code]
-
-  (*ip)--;
-  DISPATCH();
-
-#else
-
-#define OP_CODE_LABEL(name) case OP_CODE_ENUM(name)
-#define LOOP for (;;)
-#define SWITCH(x) switch (x)
-#define DISPATCH()                                                             \
-  (*ip)++;                                                                     \
-  break
-
-#endif
-
-  LOOP {
-    // clang-format off
-    SWITCH(INSTR.code) {
-    OP_CODE_LABEL(addr): r[INSTR.c] = r[INSTR.a] + r[INSTR.b]; DISPATCH(); 
-    OP_CODE_LABEL(addi): r[INSTR.c] = r[INSTR.a] + INSTR.b;    DISPATCH();
-    OP_CODE_LABEL(mulr): r[INSTR.c] = r[INSTR.a] * r[INSTR.b]; DISPATCH();
-    OP_CODE_LABEL(muli): r[INSTR.c] = r[INSTR.a] * INSTR.b;    DISPATCH();
-    OP_CODE_LABEL(banr): r[INSTR.c] = r[INSTR.a] & r[INSTR.b]; DISPATCH();
-    OP_CODE_LABEL(bani): r[INSTR.c] = r[INSTR.a] & INSTR.b;    DISPATCH();
-    OP_CODE_LABEL(borr): r[INSTR.c] = r[INSTR.a] | r[INSTR.b]; DISPATCH();
-    OP_CODE_LABEL(bori): r[INSTR.c] = r[INSTR.a] | INSTR.b;    DISPATCH();
-    OP_CODE_LABEL(setr): r[INSTR.c] = r[INSTR.a];              DISPATCH();
-    OP_CODE_LABEL(seti): r[INSTR.c] = INSTR.a;                 DISPATCH();
-    OP_CODE_LABEL(gtir): r[INSTR.c] = INSTR.a > r[INSTR.b];    DISPATCH();
-    OP_CODE_LABEL(gtri): r[INSTR.c] = r[INSTR.a] > INSTR.b;    DISPATCH();
-    OP_CODE_LABEL(gtrr): r[INSTR.c] = r[INSTR.a] > r[INSTR.b]; DISPATCH();
-    OP_CODE_LABEL(eqir): r[INSTR.c] = INSTR.a == r[INSTR.b];   DISPATCH();
-    OP_CODE_LABEL(eqri): r[INSTR.c] = r[INSTR.a] == INSTR.b;   DISPATCH();
-    OP_CODE_LABEL(eqrr): r[INSTR.c] = r[INSTR.a] == r[INSTR.b];DISPATCH();
-    OP_CODE_LABEL(nop):  goto done;
-    }
-    // clang-format on
+static void step(program *const p) {
+  int *r = p->registers;
+  int *ip = &r[p->ipIndex];
+  instruction instr = p->instructions[*ip];
+  // clang-format off
+  switch(instr.code) {
+  case op_addr: r[instr.c] = r[instr.a] + r[instr.b];  break; 
+  case op_addi: r[instr.c] = r[instr.a] + instr.b;     break;
+  case op_mulr: r[instr.c] = r[instr.a] * r[instr.b];  break;
+  case op_muli: r[instr.c] = r[instr.a] * instr.b;     break;
+  case op_banr: r[instr.c] = r[instr.a] & r[instr.b];  break;
+  case op_bani: r[instr.c] = r[instr.a] & instr.b;     break;
+  case op_borr: r[instr.c] = r[instr.a] | r[instr.b];  break;
+  case op_bori: r[instr.c] = r[instr.a] | instr.b;     break;
+  case op_setr: r[instr.c] = r[instr.a];               break;
+  case op_seti: r[instr.c] = instr.a;                  break;
+  case op_gtir: r[instr.c] = instr.a > r[instr.b];     break;
+  case op_gtri: r[instr.c] = r[instr.a] > instr.b;     break;
+  case op_gtrr: r[instr.c] = r[instr.a] > r[instr.b];  break;
+  case op_eqir: r[instr.c] = instr.a == r[instr.b];    break;
+  case op_eqri: r[instr.c] = r[instr.a] == instr.b;    break;
+  case op_eqrr: r[instr.c] = r[instr.a] == r[instr.b]; break;
   }
-done:
-  return r[0];
+  // clang-format on
+  (*ip)++;
+}
+
+static int solve(program *const p) {
+  // arbitrary value. 20 seems to be enough
+  for (int i = 0; i < 20; ++i)
+    step(p);
+
+  const int destination = p->registers[1];
+  int solution = 0;
+  int lastValue = 0;
+  for (int i = 1;; ++i) {
+    if (destination % i == 0) {
+      solution += i;
+      lastValue = i;
+      if (lastValue == destination)
+        break;
+    }
+  }
+  return solution;
 }
 
 int main(void) {
-  program p = {0};
-  AocReadFileLineByLineEx("day19/input.txt", parse, &p);
-  const i32 part1 = run(&p);
+  program p1 = {0};
+  AocReadFileLineByLineEx("day19/input.txt", parse, &p1);
+  program p2 = p1;
+  p2.registers[0] = 1;
 
-  printf("%d\n", part1);
+  const int part1 = solve(&p1);
+  const int part2 = solve(&p2);
+  printf("%d\n%d\n", part1, part2);
 }
