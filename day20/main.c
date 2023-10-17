@@ -1,26 +1,19 @@
-#include <stdio.h>
 #include <aoc/aoc.h>
 #include <aoc/mem.h>
-#include <aoc/bump.h>
+#include <stdio.h>
+#include <limits.h>
 
-aoc_bump bump = {0};
-
-typedef enum {
-  TILE_TYPE_UNKNOWN,
-  TILE_TYPE_EMPTY,
-  TILE_TYPE_WALL,
-  TILE_TYPE_DOOR,
-} tile_type;
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
 
 typedef struct {
   int x;
   int y;
 } point;
 
-typedef struct {
-  tile_type type;
-  point position;
-} tile;
+#define AOC_T point
+#define AOC_T_NAME Point
+#include <aoc/array.h>
 
 static inline uint32_t point_hash(const point *const p) {
   return (54812489 * ((uint32_t)p->x ^ 95723417) * ((uint32_t)p->y ^ 69660419));
@@ -32,366 +25,223 @@ static inline bool point_equals(const point *const a, const point *const b) {
 
 static const point emptyPoint = {INT32_MIN, INT32_MIN};
 
-#define AOC_KEY_T point
-#define AOC_KEY_T_NAME Point
-#define AOC_KEY_T_HFUNC point_hash
-#define AOC_KEY_T_EQUALS point_equals
-#define AOC_KEY_T_EMPTY emptyPoint
-#define AOC_VALUE_T tile
-#define AOC_VALUE_T_NAME Tile
+#define AOC_T point
+#define AOC_T_NAME Point
+#define AOC_T_HFUNC point_hash
+#define AOC_T_EQUALS point_equals
+#define AOC_T_EMPTY emptyPoint
 #define AOC_BASE2_CAPACITY
-#include <aoc/hashmap.h>
+#include <aoc/hashset.h>
 
 typedef struct {
-  AocHashmapPointTile *hm;
+  const AocHashsetPoint *hs;
   size_t current;
-} hm_iterator;
+} hs_iterator;
 
-static bool hm_iterate(hm_iterator *const iterator, tile *const outTile) {
+static bool hs_iterate(hs_iterator *const iterator, point *const outPoint) {
   point current = emptyPoint;
-  do {
-    current = iterator->hm->keys[iterator->current];
+  while (iterator->current < iterator->hs->capacity &&
+         point_equals(&current, &emptyPoint)) {
+    current = iterator->hs->entries[iterator->current];
     iterator->current++;
-  } while (iterator->current < iterator->hm->capacity &&
-           point_equals(&current, &emptyPoint));
-  if (iterator->current < iterator->hm->capacity) {
-    *outTile = iterator->hm->values[iterator->current];
+  }
+  if (iterator->current < iterator->hs->capacity) {
+    *outPoint = iterator->hs->entries[(iterator->current - 1)];
     return true;
   }
   return false;
 }
 
 typedef enum {
-  TOKEN_TYPE_EMPTY,
-  TOKEN_TYPE_DIRECTIONS,
-  TOKEN_TYPE_GROUP,
-} token_type;
+  TILE_TYPE_EMPTY,
+  TILE_TYPE_WALL,
+  TILE_TYPE_DOOR,
+} tile_type;
 
-typedef struct token {
-  token_type type;
-  struct token *lnext;
-  struct token *gnext;
-  struct token *parent;
-  union {
-    struct {
-      const char *start;
-      int length;
-    } dir;
-    struct {
-      struct token *first;
-    } group;
-  } data;
-} token;
+typedef struct {
+  int width;
+  int height;
+  point start;
+  tile_type tiles[];
+} map;
 
-static token *parse_expression(char *str, char **out);
+static inline int fast_abs(const int n) {
+  const int mask = n >> (sizeof(int) * CHAR_BIT - 1);
+  return (n + mask) ^ mask;
+}
 
-static token *parse_directions(char *str, char **out) {
-  token *t = AocBumpAlloc(&bump, sizeof(token));
-  t->lnext = NULL;
-  t->gnext = NULL;
-  t->parent = NULL;
-  t->type = TOKEN_TYPE_DIRECTIONS;
-  t->data.dir.start = str;
+static map *create_map(const AocHashsetPoint *const spaces,
+                       const AocHashsetPoint *const doors, const int minX,
+                       const int maxX, const int minY, const int maxY) {
+  const int width = fast_abs(maxX - minX) + 1;
+  const int height = fast_abs(maxY - minY) + 1;
+  const int totalSize = width * height;
+  map *m = AocAlloc(sizeof(map) + sizeof(tile_type) * totalSize);
+  for (int i = 0; i < totalSize; ++i)
+    m->tiles[i] = TILE_TYPE_WALL;
+
+  m->width = width;
+  m->height = height;
+  const int xOffset = 0 - minX;
+  const int yOffset = 0 - minY;
+  m->start.x = xOffset;
+  m->start.y = yOffset;
+
+  hs_iterator iter = {.hs = spaces};
+  point p = {0};
+  while (hs_iterate(&iter, &p)) {
+    const int i = (p.y + yOffset) * width + (p.x + xOffset);
+    m->tiles[i] = TILE_TYPE_EMPTY;
+  }
+  iter.current = 0;
+  iter.hs = doors;
+  while (hs_iterate(&iter, &p)) {
+    const int i = (p.y + yOffset) * width + (p.x + xOffset);
+    m->tiles[i] = TILE_TYPE_DOOR;
+  }
+  return m;
+}
+
+static map *parse(const char *expression) {
+  AocHashsetPoint spaces = {0};
+  AocHashsetPointCreate(&spaces, 1 << 12);
+  AocHashsetPoint doors = {0};
+  AocHashsetPointCreate(&doors, 1 << 12);
+  AocArrayPoint stack = {0};
+  AocArrayPointCreate(&stack, 1 << 12);
+  int minX = -1;
+  int maxX = 1;
+  int minY = -1;
+  int maxY = 1;
+
+  point current = {0};
+  AocHashsetPointInsert(&spaces, current);
   for (;;) {
-    switch (*str) {
-    case 'N':
-    case 'E':
-    case 'S':
-    case 'W':
-      str++;
-      break;
-    default:
-      goto done;
-    }
-  }
-done:
-  t->data.dir.length = str - t->data.dir.start;
-  *out = str;
-  return t;
-}
-
-static token *parse_group(char *str, char **out) {
-  AOC_ASSERT(*str == '(');
-  str++; // '('
-
-  token *grp = AocBumpAlloc(&bump, sizeof(token));
-  grp->type = TOKEN_TYPE_GROUP;
-  grp->lnext = NULL;
-  grp->gnext = NULL;
-  grp->parent = NULL;
-
-  token *prev = parse_expression(str, &str);
-  grp->data.group.first = prev;
-  prev->parent = grp;
-
-  token *current = NULL;
-  while (*str == '|') {
-    str++; // '|'
-    current = parse_expression(str, &str);
-    current->parent = grp;
-    prev->gnext = current;
-    prev = current;
-  }
-
-  AOC_ASSERT(*str == ')');
-  str++; // ')'
-  *out = str;
-
-  return grp;
-}
-
-static token *parse_expression(char *str, char **out) {
-  token *root = NULL;
-
-  switch (*str) {
-  case '(':
-    root = parse_group(str, &str);
-    break;
-  case 'N':
-  case 'E':
-  case 'S':
-  case 'W':
-    root = parse_directions(str, &str);
-    break;
-  default: {
-    if ((str[-1] == '|' && str[0] == ')') ||
-        (str[-1] == '(' && str[0] == '|') ||
-        (str[-1] == '|' && str[0] == '|')) {
-      root = AocBumpAlloc(&bump, sizeof(token));
-      root->lnext = NULL;
-      root->gnext = NULL;
-      root->parent = NULL;
-      root->type = TOKEN_TYPE_EMPTY;
-      goto done;
-    }
-    break;
-  }
-  }
-
-  token *prev = root;
-  token *current = NULL;
-  while (*str != '$') {
-    switch (*str) {
+    const char c = *expression;
+    switch (c) {
     case '(':
-      current = parse_group(str, &str);
+      AocArrayPointPush(&stack, current);
       break;
-    case 'N':
-    case 'E':
-    case 'S':
-    case 'W':
-      current = parse_directions(str, &str);
+    case '|':
+      current = *AocArrayPointLast(&stack);
+      break;
+    case ')':
+      current = *AocArrayPointLast(&stack);
+      AocArrayPointPop(&stack);
+      break;
+    case '$':
+      goto done;
+    case '^':
       break;
     default: {
-      if ((str[-1] == '|' && str[0] == ')') ||
-          (str[-1] == '(' && str[0] == '|') ||
-          (str[-1] == '|' && str[0] == '|')) {
-        current = AocBumpAlloc(&bump, sizeof(token));
-        current->lnext = NULL;
-        current->gnext = NULL;
-        current->parent = NULL;
-        current->type = TOKEN_TYPE_EMPTY;
-        prev->lnext = current;
+      point space = current;
+      point door = current;
+      uint32_t hash = 0;
+      switch (c) {
+      case 'N':
+        space.y -= 2;
+        door.y -= 1;
+        minY = MIN(minY, space.y - 1);
+        break;
+      case 'E':
+        space.x += 2;
+        door.x += 1;
+        maxX = MAX(maxX, space.x + 1);
+        break;
+      case 'S':
+        space.y += 2;
+        door.y += 1;
+        maxY = MAX(maxY, space.y + 1);
+        break;
+      case 'W':
+        space.x -= 2;
+        door.x -= 1;
+        minX = MIN(minX, space.x - 1);
+        break;
       }
-      goto done;
-    }
-    }
-    prev->lnext = current;
-    prev = current;
-  }
-done:
-  if (out != NULL)
-    *out = str;
-  return root;
-}
-
-static void print_token(token *t, int depth) {
-  for (int i = 0; i < depth; ++i)
-    printf("  ");
-
-  switch (t->type) {
-  case TOKEN_TYPE_EMPTY:
-    printf("EMPTY\n");
-    break;
-  case TOKEN_TYPE_GROUP:
-    printf("GROUP\n");
-    token *current = t->data.group.first;
-    while (current) {
-      print_token(current, depth + 1);
-      current = current->gnext;
-    }
-    break;
-  case TOKEN_TYPE_DIRECTIONS:
-    printf("D: \"%.*s\"\n", t->data.dir.length, t->data.dir.start);
-    break;
-  }
-
-  if (t->lnext != NULL)
-    print_token(t->lnext, depth);
-}
-
-static const token *get_next(const token *t) {
-  while (t->lnext != NULL) {
-    t = t->parent;
-    if (t == NULL)
-      return NULL;
-  }
-  return t->lnext;
-}
-
-static void add_new_tiles(const tile *const newTiles, const uint8_t tileCount,
-                          AocHashmapPointTile *const tiles) {
-  for (uint8_t i = 0; i < tileCount; ++i) {
-    uint32_t hash = 0;
-    if (AocHashmapPointTileContains(&tiles, newTiles[i].position, &hash)) {
-      tile t;
-      AocHashmapPointTileGetPrehashed(&tiles, newTiles[i].position, hash, &t);
-      if (t.type == TILE_TYPE_UNKNOWN &&
-          newTiles[i].type != TILE_TYPE_UNKNOWN) {
-        AocHashmapPointTileRemovePreHashed(&tiles, newTiles[i].position, hash);
-        AocHashmapPointTileInsertPreHashed(&tiles, newTiles[i].position,
-                                           newTiles[i], hash);
-      }
-    } else {
-      AocHashmapPointTileInsertPreHashed(&tiles, newTiles[i].position,
-                                         newTiles[i], hash);
-    }
-  }
-}
-
-static void move_up(point *const p, AocHashmapPointTile *const tiles) {
-  //  #?#
-  //  ?.?
-  //   -
-  p->y -= 2;
-  const tile newTiles[] = {
-      {.position = *p, .type = TILE_TYPE_EMPTY},
-      {.position = (point){p->x - 1, p->y + 0}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x + 1, p->y + 0}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x + 0, p->y - 1}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x + 0, p->y + 1}, .type = TILE_TYPE_DOOR},
-      {.position = (point){p->x + 1, p->y - 1}, .type = TILE_TYPE_WALL},
-      {.position = (point){p->x - 1, p->y - 1}, .type = TILE_TYPE_WALL},
-  };
-  add_new_tiles(newTiles, sizeof(newTiles) / sizeof(tile), tiles);
-}
-
-static void move_down(point *const p, AocHashmapPointTile *const tiles) {
-  //   -
-  //  ?.?
-  //  #?#
-  p->y += 2;
-  const tile newTiles[] = {
-      {.position = *p, .type = TILE_TYPE_EMPTY},
-      {.position = (point){p->x - 1, p->y + 0}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x + 1, p->y + 0}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x + 0, p->y + 1}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x + 0, p->y - 1}, .type = TILE_TYPE_DOOR},
-      {.position = (point){p->x + 1, p->y + 1}, .type = TILE_TYPE_WALL},
-      {.position = (point){p->x - 1, p->y + 1}, .type = TILE_TYPE_WALL},
-  };
-  add_new_tiles(newTiles, sizeof(newTiles) / sizeof(tile), tiles);
-}
-
-static void move_left(point *const p, AocHashmapPointTile *const tiles) {
-  //  #?
-  //  ?.|
-  //  #?
-  p->x -= 2;
-  const tile newTiles[] = {
-      {.position = *p, .type = TILE_TYPE_EMPTY},
-      {.position = (point){p->x - 1, p->y + 0}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x + 0, p->y - 1}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x + 0, p->y + 1}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x + 1, p->y + 0}, .type = TILE_TYPE_DOOR},
-      {.position = (point){p->x - 1, p->y + 1}, .type = TILE_TYPE_WALL},
-      {.position = (point){p->x - 1, p->y - 1}, .type = TILE_TYPE_WALL},
-  };
-  add_new_tiles(newTiles, sizeof(newTiles) / sizeof(tile), tiles);
-}
-
-static void move_right(point *const p, AocHashmapPointTile *const tiles) {
-  //   ?#
-  //  |.?
-  //   ?#
-  p->x += 2;
-  const tile newTiles[] = {
-      {.position = *p, .type = TILE_TYPE_EMPTY},
-      {.position = (point){p->x + 1, p->y + 0}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x + 0, p->y - 1}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x + 0, p->y + 1}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p->x - 1, p->y + 0}, .type = TILE_TYPE_DOOR},
-      {.position = (point){p->x + 1, p->y + 1}, .type = TILE_TYPE_WALL},
-      {.position = (point){p->x + 1, p->y - 1}, .type = TILE_TYPE_WALL},
-  };
-  add_new_tiles(newTiles, sizeof(newTiles) / sizeof(tile), tiles);
-}
-
-static void initial_tiles(const point p, AocHashmapPointTile *const tiles) {
-  //  #?#
-  //  ?.?
-  //  #?#
-  const tile newTiles[] = {
-      {.position = p, .type = TILE_TYPE_EMPTY},
-      {.position = (point){p.x - 1, p.y + 0}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p.x + 1, p.y + 0}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p.x + 0, p.y - 1}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p.x + 0, p.y + 1}, .type = TILE_TYPE_UNKNOWN},
-      {.position = (point){p.x + 1, p.y + 1}, .type = TILE_TYPE_WALL},
-      {.position = (point){p.x + 1, p.y - 1}, .type = TILE_TYPE_WALL},
-      {.position = (point){p.x - 1, p.y + 1}, .type = TILE_TYPE_WALL},
-      {.position = (point){p.x - 1, p.y - 1}, .type = TILE_TYPE_WALL},
-  };
-  add_new_tiles(newTiles, sizeof(newTiles) / sizeof(tile), tiles);
-}
-
-static void solve(const token *t, int depth, point position,
-                  AocHashmapPointTile *const tiles) {
-
-  while (t != NULL) {
-    while (t->type == TOKEN_TYPE_EMPTY) {
-      t = get_next(t);
-      if (t == NULL)
-        return;
-    }
-    switch (t->type) {
-    case TOKEN_TYPE_DIRECTIONS:
-      for (int i = 0; i < t->data.dir.length; ++i) {
-        // clang-format off
-      switch(t->data.dir.start[i]){
-        case 'N': move_up(&position, tiles);    break;
-        case 'E': move_right(&position, tiles); break;
-        case 'S': move_down(&position, tiles);  break;
-        case 'W': move_left(&position, tiles);  break;
-      }
-        // clang-format on
-      }
-      t = get_next(t);
-      break;
-    case TOKEN_TYPE_GROUP:
-      solve(t->data.group.first, depth + 1, position, tiles);
-      t = get_next(t);
+      if (!AocHashsetPointContains(&spaces, space, &hash))
+        AocHashsetPointInsertPreHashed(&spaces, space, hash);
+      if (!AocHashsetPointContains(&doors, door, &hash))
+        AocHashsetPointInsertPreHashed(&doors, door, hash);
+      current = space;
       break;
     }
+    }
+    expression++;
   }
+
+done:;
+  map *m = create_map(&spaces, &doors, minX, maxX, minY, maxY);
+  AocArrayPointDestroy(&stack);
+  AocHashsetPointDestroy(&doors);
+  AocHashsetPointDestroy(&spaces);
+  return m;
+}
+
+static void get_adjacent_points(const map *const m, const point p,
+                                point points[const 4], uint8_t *const count) {
+  *count = 0;
+  const point offsets[] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+  for (uint8_t i = 0; i < 4; ++i) {
+    const int index = (p.y + offsets[i].y) * m->width + (p.x + offsets[i].x);
+    if (m->tiles[index] == TILE_TYPE_DOOR) {
+      points[*count] = (point){
+          p.x + (offsets[i].x * 2),
+          p.y + (offsets[i].y * 2),
+      };
+      (*count)++;
+    }
+  }
+}
+
+static uint32_t solve_part1(const map *const m) {
+  AocHashsetPoint visited = {0};
+  AocHashsetPointCreate(&visited, 1 << 12);
+  AocArrayPoint current = {0};
+  AocArrayPointCreate(&current, 1 << 12);
+
+  AocHashsetPointInsert(&visited, m->start);
+  AocArrayPointPush(&current, m->start);
+
+  uint32_t pathLength = 0;
+  point adjacent[4] = {0};
+  uint8_t adjacentCount = 0;
+  uint32_t hash = 0;
+
+  while (current.length > 0) {
+    const size_t length = current.length;
+    for (size_t i = 0; i < length; ++i) {
+      point p = current.items[i];
+      get_adjacent_points(m, p, adjacent, &adjacentCount);
+      for (uint8_t i = 0; i < adjacentCount; ++i) {
+        if (!AocHashsetPointContains(&visited, adjacent[i], &hash)) {
+          AocHashsetPointInsertPreHashed(&visited, adjacent[i], hash);
+          AocArrayPointPush(&current, adjacent[i]);
+        }
+      }
+    }
+    const size_t newLength = current.length - length;
+    for (size_t j = 0; j < newLength; ++j)
+      current.items[j] = current.items[length + j];
+    current.length = newLength;
+    pathLength++;
+  }
+
+  AocArrayPointDestroy(&current);
+  AocHashsetPointDestroy(&visited);
+  return pathLength - 1;
 }
 
 int main(void) {
-  AocBumpInit(&bump, 1 << 20);
-
-  char *regex = NULL;
+  char *expression = NULL;
   size_t length = 0;
-  AocReadFileToString("day20/input.txt", &regex, &length);
-  AocTrimRight(regex, &length);
+  AocReadFileToString("day20/input.txt", &expression, &length);
 
-  token *root = parse_expression(regex + 1, NULL);
-  // print_token(root, 0);
-  AocHashmapPointTile tiles = {0};
-  AocHashmapPointTileCreate(&tiles, 1 << 14);
-  initial_tiles((point){0, 0}, &root);
+  map *m = parse(expression);
+  const uint32_t part1 = solve_part1(m);
 
-  solve(root, 0, (point){0, 0}, &tiles);
+  printf("%u\n", part1);
 
-  AocFree(regex);
-  AocHashmapPointTileDestroy(&tiles);
-  AocBumpDestroy(&bump);
+  AocFree(m);
+  AocFree(expression);
 }
