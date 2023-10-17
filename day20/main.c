@@ -16,7 +16,8 @@ typedef struct {
 #include <aoc/array.h>
 
 static inline uint32_t point_hash(const point *const p) {
-  return (54812489 * ((uint32_t)p->x ^ 95723417) * ((uint32_t)p->y ^ 69660419));
+  return 47254019u ^ (((*(uint32_t *)&p->x) * 84560501u) ^
+                      ((*(uint32_t *)&p->y) * 57798941u));
 }
 
 static inline bool point_equals(const point *const a, const point *const b) {
@@ -104,11 +105,11 @@ static map *create_map(const AocHashsetPoint *const spaces,
 
 static map *parse(const char *expression) {
   AocHashsetPoint spaces = {0};
-  AocHashsetPointCreate(&spaces, 1 << 12);
+  AocHashsetPointCreate(&spaces, 1 << 14);
   AocHashsetPoint doors = {0};
-  AocHashsetPointCreate(&doors, 1 << 12);
+  AocHashsetPointCreate(&doors, 1 << 14);
   AocArrayPoint stack = {0};
-  AocArrayPointCreate(&stack, 1 << 12);
+  AocArrayPointCreate(&stack, 1 << 8);
   int minX = -1;
   int maxX = 1;
   int minY = -1;
@@ -194,11 +195,12 @@ static void get_adjacent_points(const map *const m, const point p,
   }
 }
 
-static uint32_t solve_part1(const map *const m) {
+static void solve(const map *const m, uint32_t *const part1,
+                  uint32_t *const part2) {
   AocHashsetPoint visited = {0};
-  AocHashsetPointCreate(&visited, 1 << 12);
+  AocHashsetPointCreate(&visited, 1 << 6);
   AocArrayPoint current = {0};
-  AocArrayPointCreate(&current, 1 << 12);
+  AocArrayPointCreate(&current, 1 << 14);
 
   AocHashsetPointInsert(&visited, m->start);
   AocArrayPointPush(&current, m->start);
@@ -225,11 +227,12 @@ static uint32_t solve_part1(const map *const m) {
       current.items[j] = current.items[length + j];
     current.length = newLength;
     pathLength++;
+    if (pathLength >= 1000)
+      *part2 += newLength;
   }
-
   AocArrayPointDestroy(&current);
   AocHashsetPointDestroy(&visited);
-  return pathLength - 1;
+  *part1 = pathLength - 1;
 }
 
 int main(void) {
@@ -238,10 +241,11 @@ int main(void) {
   AocReadFileToString("day20/input.txt", &expression, &length);
 
   map *m = parse(expression);
-  const uint32_t part1 = solve_part1(m);
+  AocFree(expression);
 
-  printf("%u\n", part1);
+  uint32_t part1 = 0, part2 = 0;
+  solve(m, &part1, &part2);
+  printf("%u\n%u\n", part1, part2);
 
   AocFree(m);
-  AocFree(expression);
 }
