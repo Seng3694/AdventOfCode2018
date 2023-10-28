@@ -51,6 +51,47 @@ static int solve_part1(AocArrayBot *const bots) {
   return inRange;
 }
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+typedef struct {
+  int value;
+  int e;
+} distance;
+
+static inline int compare_distance(const distance *const a,
+                                   const distance *const b) {
+  return a->value - b->value;
+}
+
+#define AOC_T distance
+#define AOC_T_NAME Dist
+#define AOC_T_COMPARE compare_distance
+#include <aoc/heap.h>
+
+static int solve_part2(AocArrayBot *const bots) {
+  AocMinHeapDist heap = {0};
+  AocMinHeapDistCreate(&heap, bots->length * 2);
+  for (size_t i = 0; i < bots->length; ++i) {
+    const nanobot b = bots->items[i];
+    const int d = manhattan_distance(b.position, (point){0});
+    AocMinHeapDistPush(&heap, (distance){MAX(0, d - b.radius), 1});
+    AocMinHeapDistPush(&heap, (distance){d + b.radius + 1, -1});
+  }
+  int count = 0;
+  int maxCount = 0;
+  int result = 0;
+  while (heap.count > 0) {
+    distance d = AocMinHeapDistPop(&heap);
+    count += d.e;
+    if (count > maxCount) {
+      result = d.value;
+      maxCount = count;
+    }
+  }
+  AocMinHeapDistDestroy(&heap);
+  return result;
+}
+
 int main(void) {
   AocArrayBot bots = {0};
   AocArrayBotCreate(&bots, 1 << 12);
@@ -58,8 +99,10 @@ int main(void) {
   qsort(bots.items, bots.length, sizeof(nanobot), compare_bots);
 
   const int part1 = solve_part1(&bots);
+  const int part2 = solve_part2(&bots);
 
   printf("%d\n", part1);
+  printf("%d\n", part2);
 
   AocArrayBotDestroy(&bots);
 }
