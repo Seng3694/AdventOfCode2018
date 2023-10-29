@@ -179,19 +179,27 @@ static void select_targets(AocArrayGroup *const a, AocArrayGroup *const b) {
   }
 }
 
-static void simulate(context *const ctx, int *const immuneUnits,
-                     int *const infectionUnits) {
-  size_t count = ctx->immuneSystem.length + ctx->infection.length;
-  group **groups = AocAlloc(sizeof(group *) * count);
-  for (size_t i = 0; i < ctx->immuneSystem.length; ++i)
+group **groups = NULL;
+size_t count = 0;
+
+static bool simulate(context *const ctx, const int boost,
+                     int *const immuneUnits, int *const infectionUnits) {
+  int immuneUnitsCount = 0;
+  int infectionUnitsCount = 0;
+  int prevImmuneUnits = 0;
+  int prevInfectionUnits = 0;
+
+  for (size_t i = 0; i < ctx->immuneSystem.length; ++i) {
     groups[i] = &ctx->immuneSystem.items[i];
-  for (size_t i = ctx->immuneSystem.length; i < count; ++i)
+    groups[i]->ap += boost;
+    immuneUnitsCount += groups[i]->units;
+  }
+  for (size_t i = ctx->immuneSystem.length; i < count; ++i) {
     groups[i] = &ctx->infection.items[i - ctx->immuneSystem.length];
+    infectionUnitsCount += groups[i]->units;
+  }
 
-  size_t immuneCount = ctx->immuneSystem.length;
-  size_t infectionCount = ctx->infection.length;
-
-  while (immuneCount > 0 && infectionCount > 0) {
+  while (immuneUnitsCount > 0 && infectionUnitsCount > 0) {
     qsort(ctx->immuneSystem.items, ctx->immuneSystem.length, sizeof(group),
           compare_group_by_effective_power);
     qsort(ctx->infection.items, ctx->infection.length, sizeof(group),
@@ -202,6 +210,9 @@ static void simulate(context *const ctx, int *const immuneUnits,
     select_targets(&ctx->immuneSystem, &ctx->infection);
     select_targets(&ctx->infection, &ctx->immuneSystem);
 
+    prevImmuneUnits = immuneUnitsCount;
+    prevInfectionUnits = infectionUnitsCount;
+
     // attack phase
     for (size_t i = 0; i < count; ++i) {
       if (groups[i]->units <= 0 || groups[i]->target == NULL)
@@ -210,36 +221,48 @@ static void simulate(context *const ctx, int *const immuneUnits,
           (calc_damage(groups[i], groups[i]->target) / groups[i]->target->hp);
     }
 
-    immuneCount = 0;
-    infectionCount = 0;
+    immuneUnitsCount = 0;
+    infectionUnitsCount = 0;
     for (size_t i = 0; i < ctx->immuneSystem.length; ++i) {
       ctx->immuneSystem.items[i].isTargeted = false;
       if (ctx->immuneSystem.items[i].units > 0)
-        immuneCount++;
+        immuneUnitsCount += ctx->immuneSystem.items[i].units;
     }
     for (size_t i = 0; i < ctx->infection.length; ++i) {
       ctx->infection.items[i].isTargeted = false;
       if (ctx->infection.items[i].units > 0)
-        infectionCount++;
+        infectionUnitsCount += ctx->infection.items[i].units;
     }
+
+    // no one can deal damage to anyone anymore
+    if (prevImmuneUnits == immuneUnitsCount &&
+        prevInfectionUnits == infectionUnitsCount)
+      return false;
   }
 
-  *immuneUnits = 0;
-  *infectionUnits = 0;
-  for (size_t i = 0; i < ctx->immuneSystem.length; ++i)
-    if (ctx->immuneSystem.items[i].units > 0)
-      (*immuneUnits) += ctx->immuneSystem.items[i].units;
-  for (size_t i = 0; i < ctx->infection.length; ++i)
-    if (ctx->infection.items[i].units > 0)
-      (*infectionUnits) += ctx->infection.items[i].units;
-
-  AocFree(groups);
+  *immuneUnits = (int)immuneUnitsCount;
+  *infectionUnits = (int)infectionUnitsCount;
+  return true;
 }
 
 static int solve_part1(context *const ctx) {
   int immuneUnits, infectionUnits;
-  simulate(ctx, &immuneUnits, &infectionUnits);
+  simulate(ctx, 0, &immuneUnits, &infectionUnits);
   return immuneUnits + infectionUnits;
+}
+
+static int solve_part2(context *const ctx, const context *const source) {
+  int immuneUnits = 0;
+  int infectionUnits = 0;
+  for (int boost = 0;; ++boost) {
+    // reset state
+    AocArrayGroupCopy(&ctx->immuneSystem, &source->immuneSystem);
+    AocArrayGroupCopy(&ctx->infection, &source->infection);
+    if (simulate(ctx, boost, &immuneUnits, &infectionUnits) && immuneUnits > 0)
+      goto finish;
+  }
+finish:
+  return immuneUnits;
 }
 
 int main(void) {
@@ -248,10 +271,22 @@ int main(void) {
   AocReadFileToString("day24/input.txt", &input, &length);
   context ctx = parse(input);
   AocFree(input);
+  count = ctx.immuneSystem.length + ctx.infection.length;
+  groups = AocAlloc(sizeof(group *) * count);
 
-  const int part1 = solve_part1(&ctx);
+  context copy = {0};
+  AocArrayGroupDuplicate(&copy.immuneSystem, &ctx.immuneSystem);
+  AocArrayGroupDuplicate(&copy.infection, &ctx.infection);
+
+  const int part1 = solve_part1(&copy);
+  const int part2 = solve_part2(&copy, &ctx);
+
   printf("%d\n", part1);
+  printf("%d\n", part2);
 
+  AocFree(groups);
   AocArrayGroupDestroy(&ctx.immuneSystem);
   AocArrayGroupDestroy(&ctx.infection);
+  AocArrayGroupDestroy(&copy.immuneSystem);
+  AocArrayGroupDestroy(&copy.infection);
 }
