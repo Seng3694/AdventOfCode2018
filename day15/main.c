@@ -350,8 +350,6 @@ static void solve_part1(context *const ctx, const uint32_t elfAp,
   uint32_t rounds = 0;
   for (rounds = 0;; ++rounds) {
     sort_unit_ptrs(allUnits, allUnitsCount);
-    if (rounds == 10)
-      rounds = rounds;
 
     for (uint8_t i = 0; i < allUnitsCount; ++i) {
       unit *const u = allUnits[i];
